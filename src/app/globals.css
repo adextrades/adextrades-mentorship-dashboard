@@ -1,0 +1,49 @@
+:root {
+  --gold: #C9A84C;
+  --gold-dim: #8a6e2f;
+  --gold-light: #e0c070;
+  --gold-glow: rgba(201, 168, 76, 0.12);
+  --gold-glow-strong: rgba(201, 168, 76, 0.25);
+  --bg: #080808;
+  --bg2: #0f0f0f;
+  --bg3: #161616;
+  --bg4: #1e1e1e;
+  --bg5: #252525;
+  --border: rgba(201, 168, 76, 0.15);
+  --border-bright: rgba(201, 168, 76, 0.4);
+  --text: #e8e0cc;
+  --text-dim: #9a9490;
+  --text-muted: #4a4642;
+  --red: #e05252;
+  --red-glow: rgba(224, 82, 82, 0.12);
+  --green: #52c47a;
+  --green-glow: rgba(82, 196, 122, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--gold-dim); }
+
+/* Selection */
+::selection { background: var(--gold-glow-strong); color: var(--gold-light); }
+
+/* Focus */
+*:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
