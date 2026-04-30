@@ -1,7 +1,5 @@
 import { AppData, Mentee, MenteePlan, Trade } from './types'
 
-const STORAGE_KEY = 'adextrades_data'
-
 export const DEFAULT_MENTEES = [
   'Knight', 'Tim Park', 'Giovanni Santiago', 'Maggie Stewart',
   'Patrick Rebadow', 'Sam Williamson', 'James Jean-Louis',
@@ -32,23 +30,26 @@ function getDefaultData(): AppData {
   return { mentees: {} }
 }
 
-export function loadData(): AppData {
-  if (typeof window === 'undefined') return getDefaultData()
+export async function loadDataRemote(): Promise<AppData> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return getDefaultData()
-    return JSON.parse(raw) as AppData
-  } catch {
+    const res = await fetch('/api/data', { cache: 'no-store' })
+    const json = await res.json()
+    return json.data || getDefaultData()
+  } catch (e) {
+    console.error('Failed to load remote data:', e)
     return getDefaultData()
   }
 }
 
-export function saveData(data: AppData): void {
-  if (typeof window === 'undefined') return
+export async function saveDataRemote(data: AppData): Promise<void> {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
   } catch (e) {
-    console.error('Failed to save data', e)
+    console.error('Failed to save remote data:', e)
   }
 }
 

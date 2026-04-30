@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  loadData, saveData, getMentee, saveMenteePlan, addTrade,
+  loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
   deleteTrade, addMentee, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN
 } from '@/lib/storage'
 import { AppData, MenteePlan, Trade } from '@/lib/types'
@@ -60,17 +60,21 @@ export default function Dashboard() {
   const [newMenteeName, setNewMenteeName] = useState('')
   const [showNewMentee, setShowNewMentee] = useState(false)
 
+  const [saving, setSaving] = useState(false)
+
   useEffect(() => {
-    const loaded = loadData()
-    setData(loaded)
-    setMounted(true)
+    loadDataRemote().then(loaded => {
+      setData(loaded)
+      setMounted(true)
+    })
     setIntakeDate(new Date().toISOString().slice(0, 10))
   }, [])
 
-  useEffect(() => {
-    if (!mounted) return
-    saveData(data)
-  }, [data, mounted])
+  const persistData = useCallback(async (newData: AppData) => {
+    setSaving(true)
+    await saveDataRemote(newData)
+    setSaving(false)
+  }, [])
 
   const menteeNames = mounted ? getAllMenteeNames(data) : DEFAULT_MENTEES
 
@@ -85,10 +89,11 @@ export default function Dashboard() {
     setIntakeFlags([])
   }, [data])
 
-  const handleSavePlan = () => {
+  const handleSavePlan = async () => {
     if (!activeMentee) { alert('Select a mentee first.'); return }
     const updated = saveMenteePlan(data, activeMentee, plan)
     setData(updated)
+    await persistData(updated)
     alert(`Plan saved for ${activeMentee}!`)
   }
 
@@ -96,6 +101,7 @@ export default function Dashboard() {
     if (!newMenteeName.trim()) return
     const updated = addMentee(data, newMenteeName.trim())
     setData(updated)
+    persistData(updated)
     setActiveMentee(newMenteeName.trim())
     setPlan({ ...EMPTY_PLAN })
     setNewMenteeName('')
@@ -120,6 +126,7 @@ export default function Dashboard() {
     }
     const updated = addTrade(data, activeMentee, trade)
     setData(updated)
+    persistData(updated)
     setShowTradeForm(false)
     setTradeTicker(''); setTradeEntry(''); setTradeExit('')
     setTradeQty(''); setTradePnl(''); setTradeNotes('')
@@ -130,6 +137,7 @@ export default function Dashboard() {
     if (!confirm('Delete this trade?')) return
     const updated = deleteTrade(data, activeMentee, tradeId)
     setData(updated)
+    persistData(updated)
   }
 
   const callClaude = async (prompt: string): Promise<string> => {
@@ -263,6 +271,7 @@ export default function Dashboard() {
               <span>{activeMentee}</span>
             </div>
           )}
+          {saving && <div style={{fontSize:11,color:"var(--gold-dim)",letterSpacing:"1px"}}>SAVING...</div>}
           <div className={styles.headerMeta}>Platinum Mentorship</div>
         </div>
       </header>
