@@ -141,17 +141,15 @@ export default function Dashboard() {
   }
 
   const callClaude = async (prompt: string): Promise<string> => {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ prompt })
     })
+    if (!res.ok) throw new Error('API request failed')
     const d = await res.json()
-    return d.content?.[0]?.text || 'No response.'
+    if (d.error) throw new Error(d.error)
+    return d.text || 'No response.'
   }
 
   const handleGeneratePlanSummary = async () => {
