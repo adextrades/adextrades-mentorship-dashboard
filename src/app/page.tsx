@@ -9,7 +9,6 @@ import { AppData, MenteePlan, Trade } from '@/lib/types'
 import styles from './dashboard.module.css'
 
 const TABS = ['Trade Plan', 'Session Intake', 'Trade Log', 'Dashboard']
-
 const STRAT_SETUPS = ['2u (bullish)', '2d (bearish)', '3 (outside)', '1 (inside)', 'FTFC', 'CCRP', 'OTE', 'PMH/PML', 'Other']
 
 export default function Dashboard() {
@@ -17,15 +16,12 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState(0)
   const [activeMentee, setActiveMentee] = useState('')
   const [mounted, setMounted] = useState(false)
-
-  // Plan form state
+  const [saving, setSaving] = useState(false)
   const [plan, setPlan] = useState<MenteePlan>({ ...EMPTY_PLAN })
   const [approvedInput, setApprovedInput] = useState('')
   const [restrictedInput, setRestrictedInput] = useState('')
   const [planAI, setPlanAI] = useState('')
   const [planAILoading, setPlanAILoading] = useState(false)
-
-  // Intake form state
   const [intakeTrades, setIntakeTrades] = useState('')
   const [intakeFollowed, setIntakeFollowed] = useState('')
   const [intakeDeviation, setIntakeDeviation] = useState('')
@@ -38,8 +34,6 @@ export default function Dashboard() {
   const [intakeAI, setIntakeAI] = useState('')
   const [intakeAILoading, setIntakeAILoading] = useState(false)
   const [intakeFlags, setIntakeFlags] = useState<{ title: string; msg: string }[]>([])
-
-  // Trade log form state
   const [showTradeForm, setShowTradeForm] = useState(false)
   const [tradeTicker, setTradeTicker] = useState('')
   const [tradeDir, setTradeDir] = useState('Call')
@@ -51,22 +45,13 @@ export default function Dashboard() {
   const [tradePlanFollow, setTradePlanFollow] = useState('Yes')
   const [tradeEmotion, setTradeEmotion] = useState('1')
   const [tradeNotes, setTradeNotes] = useState('')
-
-  // Dashboard AI
   const [dashAI, setDashAI] = useState('')
   const [dashAILoading, setDashAILoading] = useState(false)
-
-  // New mentee
   const [newMenteeName, setNewMenteeName] = useState('')
   const [showNewMentee, setShowNewMentee] = useState(false)
 
-  const [saving, setSaving] = useState(false)
-
   useEffect(() => {
-    loadDataRemote().then(loaded => {
-      setData(loaded)
-      setMounted(true)
-    })
+    loadDataRemote().then(loaded => { setData(loaded); setMounted(true) })
     setIntakeDate(new Date().toISOString().slice(0, 10))
   }, [])
 
@@ -83,10 +68,7 @@ export default function Dashboard() {
     if (!name) return
     const m = getMentee(data, name)
     setPlan({ ...EMPTY_PLAN, ...m.plan })
-    setDashAI('')
-    setPlanAI('')
-    setIntakeAI('')
-    setIntakeFlags([])
+    setDashAI(''); setPlanAI(''); setIntakeAI(''); setIntakeFlags([])
   }, [data])
 
   const handleSavePlan = async () => {
@@ -94,18 +76,15 @@ export default function Dashboard() {
     const updated = saveMenteePlan(data, activeMentee, plan)
     setData(updated)
     await persistData(updated)
-    alert(`Plan saved for ${activeMentee}!`)
+    alert('Plan saved for ' + activeMentee + '!')
   }
 
   const handleAddMentee = () => {
     if (!newMenteeName.trim()) return
     const updated = addMentee(data, newMenteeName.trim())
-    setData(updated)
-    persistData(updated)
-    setActiveMentee(newMenteeName.trim())
-    setPlan({ ...EMPTY_PLAN })
-    setNewMenteeName('')
-    setShowNewMentee(false)
+    setData(updated); persistData(updated)
+    setActiveMentee(newMenteeName.trim()); setPlan({ ...EMPTY_PLAN })
+    setNewMenteeName(''); setShowNewMentee(false)
   }
 
   const handleLogTrade = () => {
@@ -116,36 +95,21 @@ export default function Dashboard() {
     const manualPnl = tradePnl ? parseFloat(tradePnl) : parseFloat(((exit - entry) * qty * 100).toFixed(2))
     let ticker = tradeTicker.toUpperCase()
     if (!ticker.startsWith('$')) ticker = '$' + ticker
-    const trade: Omit<Trade, 'id'> = {
-      date: new Date().toISOString().slice(0, 10),
-      ticker, dir: tradeDir, setup: tradeSetup,
-      entry, exit, qty, pnl: manualPnl,
-      plan: tradePlanFollow,
-      emotion: parseInt(tradeEmotion),
-      notes: tradeNotes
-    }
+    const trade: Omit<Trade, 'id'> = { date: new Date().toISOString().slice(0, 10), ticker, dir: tradeDir, setup: tradeSetup, entry, exit, qty, pnl: manualPnl, plan: tradePlanFollow, emotion: parseInt(tradeEmotion), notes: tradeNotes }
     const updated = addTrade(data, activeMentee, trade)
-    setData(updated)
-    persistData(updated)
-    setShowTradeForm(false)
-    setTradeTicker(''); setTradeEntry(''); setTradeExit('')
-    setTradeQty(''); setTradePnl(''); setTradeNotes('')
+    setData(updated); persistData(updated); setShowTradeForm(false)
+    setTradeTicker(''); setTradeEntry(''); setTradeExit(''); setTradeQty(''); setTradePnl(''); setTradeNotes('')
   }
 
   const handleDeleteTrade = (tradeId: string) => {
     if (!activeMentee) return
     if (!confirm('Delete this trade?')) return
     const updated = deleteTrade(data, activeMentee, tradeId)
-    setData(updated)
-    persistData(updated)
+    setData(updated); persistData(updated)
   }
 
   const callClaude = async (prompt: string): Promise<string> => {
-    const res = await fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
-    })
+    const res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) })
     if (!res.ok) throw new Error('API request failed')
     const d = await res.json()
     if (d.error) throw new Error(d.error)
@@ -154,12 +118,9 @@ export default function Dashboard() {
 
   const handleGeneratePlanSummary = async () => {
     if (!activeMentee) { alert('Select and save a plan first.'); return }
-    setPlanAILoading(true)
-    setPlanAI('')
+    setPlanAILoading(true); setPlanAI('')
     try {
-      const text = await callClaude(
-        `You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ${activeMentee}\n\nPlan details:\n- Experience: ${plan.exp}\n- Focus: ${plan.focus}\n- Starting portfolio: $${plan.portStart}\n- Max active trades: ${plan.maxTrades}\n- Max size per trade: $${plan.maxSize}\n- Stop loss: ${plan.stopLoss}%\n- Profit target: ${plan.target}%\n- DTE rule: ${plan.dte}\n- Approval requirement: ${plan.approval}\n- Check-in every: $${plan.ci1} (escalates to $${plan.ci2} after $${plan.ci2Trigger})\n- Approved: ${plan.approved?.join(', ')}\n- Restricted: ${plan.restricted?.join(', ')}\n- Psychology notes: ${plan.psych}\n- Goals: ${plan.goals}\n\nWrite 150–200 words in a direct, professional mentor voice. Written TO the mentee (second person). Include their rules clearly. Reference TheStrat notation where applicable. End with one sentence about what success looks like for the next milestone.`
-      )
+      const text = await callClaude('You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ' + activeMentee + '\n\nGOALS:\n- Short-term goal: ' + (plan.goalShortTerm || 'Not set') + '\n- Long-term goal: ' + (plan.goalLongTerm || 'Not set') + '\n- Portfolio target: $' + (plan.goalPortTarget || 0) + '\n- Timeline: ' + (plan.goalTimeline || 'Not set') + '\n\nASSETS:\n- Account size: $' + (plan.accountSize || 0) + '\n- Cash available: $' + (plan.cashAvailable || 0) + '\n- Shares held: ' + (plan.sharesHeld || 'None') + '\n- Experience: ' + plan.exp + '\n- Focus: ' + plan.focus + '\n\nTRADE RULES:\n- Starting portfolio: $' + plan.portStart + '\n- Max trades: ' + plan.maxTrades + '\n- Max size: $' + plan.maxSize + '\n- Stop loss: ' + plan.stopLoss + '%\n- Profit target: ' + plan.target + '%\n- DTE: ' + plan.dte + '\n- Approval: ' + plan.approval + '\n- Check-ins every $' + plan.ci1 + ' (escalates to $' + plan.ci2 + ' after $' + plan.ci2Trigger + ')\n- Approved: ' + (plan.approved?.join(', ') || 'None') + '\n- Restricted: ' + (plan.restricted?.join(', ') || 'None') + '\n\nPSYCHOLOGY: ' + (plan.psych || 'None noted') + '\n\nWrite 180-220 words. Start with their goals. Write TO the mentee in second person. Be direct. Reference TheStrat notation where applicable. End with what success looks like at their first milestone.')
       setPlanAI(text)
     } catch { setPlanAI('Error generating summary. Check API connection.') }
     setPlanAILoading(false)
@@ -167,17 +128,15 @@ export default function Dashboard() {
 
   const handleAnalyzeIntake = async () => {
     if (!activeMentee) { alert('Select a mentee.'); return }
-    setIntakeAILoading(true)
-    setIntakeAI('')
-    setIntakeFlags([])
+    setIntakeAILoading(true); setIntakeAI(''); setIntakeFlags([])
+    const m = getMentee(data, activeMentee)
     try {
-      const text = await callClaude(
-        `Trading mentor assistant for AdexTrades (TheStrat methodology by Rob Smith).\n\nMentee: ${activeMentee}\nSession date: ${intakeDate}\nTrades taken: ${intakeTrades || 'Not provided'}\nFollowed plan: ${intakeFollowed || 'Not answered'}\nDeviations: ${intakeDeviation || 'None noted'}\nP&L: ${intakePnl || 'Not provided'}\nEmotion score during worst trade: ${intakeEmotion || 'Not selected'}/5\nFocus for today: ${intakeFocus || 'Not provided'}\nBiggest win/insight: ${intakeWin || 'Not provided'}\nBiggest mistake: ${intakeMistake || 'Not provided'}\n\nWrite a 100–150 word pre-session brief for Adex (the mentor). Highlight what went well, what to address, psychology patterns to watch for. Be direct and specific. Reference TheStrat concepts if relevant. Flag any discipline or psychology concerns explicitly.`
-      )
+      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee: ' + activeMentee + '\nShort-term goal: ' + (m.plan?.goalShortTerm || 'Not set') + '\nLong-term goal: ' + (m.plan?.goalLongTerm || 'Not set') + '\nSession date: ' + intakeDate + '\nTrades: ' + (intakeTrades || 'Not provided') + '\nFollowed plan: ' + (intakeFollowed || 'Not answered') + '\nDeviations: ' + (intakeDeviation || 'None') + '\nP&L: ' + (intakePnl || 'Not provided') + '\nEmotion score: ' + (intakeEmotion || 'Not selected') + '/5\nFocus: ' + (intakeFocus || 'Not provided') + '\nBiggest win: ' + (intakeWin || 'Not provided') + '\nBiggest mistake: ' + (intakeMistake || 'Not provided') + '\n\nWrite a 100-150 word pre-session brief for Adex. Reference goals when relevant. Highlight what went well, what to address, psychology patterns. Be direct and flag any concerns explicitly.')
       setIntakeAI(text)
       const flags: { title: string; msg: string }[] = []
-      if (intakeEmotion >= 4) flags.push({ title: 'High Emotional State', msg: `Mentee reported emotion ${intakeEmotion}/5 during their worst trade. Explore what triggered this and whether it led to revenge trades.` })
-      if (intakeFollowed.includes('No') || intakeFollowed.includes('deviated')) flags.push({ title: 'Plan Deviation', msg: 'Mentee acknowledged deviating from the trade plan. Use intake notes to identify which rule broke down and reinforce it at the start of the session.' })
+      if (intakeEmotion >= 4) flags.push({ title: 'High Emotional State', msg: 'Mentee reported emotion ' + intakeEmotion + '/5. Explore triggers and whether it led to revenge trades.' })
+      if (intakeFollowed.includes('No') || intakeFollowed.includes('deviated')) flags.push({ title: 'Plan Deviation', msg: 'Mentee acknowledged deviating. Identify which rule broke down at the start of the session.' })
+      if (parseFloat(intakePnl) < 0 && intakeEmotion >= 3) flags.push({ title: 'Loss + Elevated Emotion', msg: 'Negative P&L combined with emotion 3+. Watch for revenge trading patterns.' })
       setIntakeFlags(flags)
     } catch { setIntakeAI('Error. Check API connection.') }
     setIntakeAILoading(false)
@@ -186,27 +145,29 @@ export default function Dashboard() {
   const handleDashAI = async () => {
     if (!activeMentee) { alert('Select a mentee.'); return }
     const m = getMentee(data, activeMentee)
-    const trades = m.trades || []
-    const p = m.plan || {}
-    setDashAILoading(true)
-    setDashAI('')
+    const tr = m.trades || []; const p = m.plan || {}
+    setDashAILoading(true); setDashAI('')
     try {
-      const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
-      const wins = trades.filter(t => t.pnl > 0).length
-      const dev = trades.filter(t => t.plan !== 'Yes').length
-      const avgEm = trades.length ? (trades.reduce((s, t) => s + t.emotion, 0) / trades.length).toFixed(1) : 'N/A'
-      const text = await callClaude(
-        `Trading mentor assistant for AdexTrades (TheStrat methodology by Rob Smith).\n\nGenerate a mentee progress analysis for Adex about mentee: ${activeMentee}\n\nTrade data:\n- Total trades: ${trades.length}\n- Wins: ${wins}, Losses: ${trades.length - wins}\n- Total P&L: $${totalPnl.toFixed(0)}\n- Plan deviations: ${dev} of ${trades.length}\n- Avg emotion score: ${avgEm}\n- Recent trades: ${JSON.stringify(trades.slice(-10).map(t => ({ ticker: t.ticker, pnl: t.pnl, plan: t.plan, emotion: t.emotion, notes: t.notes })))}\n\nMentee plan:\n- Focus: ${p.focus}\n- Max trades: ${p.maxTrades}\n- Psychology notes: ${p.psych}\n- Goals: ${p.goals}\n\nWrite 200–250 words. Include: performance observations, discipline patterns, psychology trends, what's working, what needs work, one specific recommendation for the next session. Write directly to Adex in a professional mentorship voice. Reference TheStrat concepts where relevant.`
-      )
+      const totalPnl = tr.reduce((s: number, t: Trade) => s + t.pnl, 0)
+      const wins = tr.filter((t: Trade) => t.pnl > 0).length
+      const dev = tr.filter((t: Trade) => t.plan !== 'Yes').length
+      const avgEm = tr.length ? (tr.reduce((s: number, t: Trade) => s + t.emotion, 0) / tr.length).toFixed(1) : 'N/A'
+      const pStart = p.portStart || 0; const pVal = pStart + totalPnl
+      const gTarget = p.goalPortTarget || 0
+      const gPct = gTarget > pStart ? Math.round(((pVal - pStart) / (gTarget - pStart)) * 100) : 0
+      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee progress analysis for: ' + activeMentee + '\n\nGOALS:\n- Short-term: ' + (p.goalShortTerm || 'Not set') + '\n- Long-term: ' + (p.goalLongTerm || 'Not set') + '\n- Target: $' + gTarget + '\n- Timeline: ' + (p.goalTimeline || 'Not set') + '\n- Goal progress: ' + gPct + '% (portfolio $' + Math.round(pVal) + ' vs target $' + gTarget + ')\n\nPERFORMANCE:\n- Trades: ' + tr.length + ', Wins: ' + wins + ', Losses: ' + (tr.length - wins) + '\n- P&L: $' + totalPnl.toFixed(0) + '\n- Deviations: ' + dev + '/' + tr.length + '\n- Avg emotion: ' + avgEm + '\n- Recent: ' + JSON.stringify(tr.slice(-6).map((t: Trade) => ({ ticker: t.ticker, pnl: t.pnl, plan: t.plan, emotion: t.emotion }))) + '\n\nPLAN: Focus: ' + p.focus + ', Max trades: ' + p.maxTrades + ', Psychology: ' + (p.psych || 'None') + '\n\nWrite 200-250 words. Lead with goal progress. Cover performance, discipline, psychology, recommendations. Write to Adex professionally.')
       setDashAI(text)
     } catch { setDashAI('Error. Check API connection.') }
     setDashAILoading(false)
   }
 
-  // Dashboard stats
   const currentMenteeData = activeMentee ? getMentee(data, activeMentee) : null
   const trades = currentMenteeData?.trades || []
-  const portStart = currentMenteeData?.plan?.portStart || 2000
+  const portStart = currentMenteeData?.plan?.portStart || 0
+  const goalTarget = currentMenteeData?.plan?.goalPortTarget || 0
+  const goalTimeline = currentMenteeData?.plan?.goalTimeline || ''
+  const goalShortTerm = currentMenteeData?.plan?.goalShortTerm || ''
+  const goalLongTerm = currentMenteeData?.plan?.goalLongTerm || ''
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0)
   const portVal = portStart + totalPnl
   const wins = trades.filter(t => t.pnl > 0).length
@@ -214,90 +175,63 @@ export default function Dashboard() {
   const planFollowed = trades.filter(t => t.plan === 'Yes').length
   const discScore = trades.length ? Math.round(planFollowed / trades.length * 100) : 0
   const avgEmotion = trades.length ? (trades.reduce((s, t) => s + t.emotion, 0) / trades.length).toFixed(1) : '—'
+  const goalPct = goalTarget > portStart && portStart > 0 ? Math.min(100, Math.max(0, Math.round(((portVal - portStart) / (goalTarget - portStart)) * 100))) : 0
 
-  // Flags
   const getFlags = () => {
     const flags: { title: string; msg: string }[] = []
     const dev = trades.filter(t => t.plan !== 'Yes')
-    if (dev.length >= 2) flags.push({ title: 'Repeated Deviations', msg: `${dev.length} of ${trades.length} trades deviated from the plan. Rules need to be more explicit or accountability structure needs tightening.` })
-    const highEmLoss = trades.filter(t => t.pnl < 0 && t.emotion >= 4)
-    if (highEmLoss.length) flags.push({ title: 'Emotional Trading on Losses', msg: `${highEmLoss.length} loss(es) occurred with emotion score 4+. Review what triggered these sessions — revenge trading risk.` })
+    if (dev.length >= 2) flags.push({ title: 'Repeated Deviations', msg: dev.length + ' of ' + trades.length + ' trades deviated. Rules need tightening.' })
+    const hel = trades.filter(t => t.pnl < 0 && t.emotion >= 4)
+    if (hel.length) flags.push({ title: 'Emotional Trading on Losses', msg: hel.length + ' loss(es) with emotion 4+. Revenge trading risk.' })
     let maxC = 0, cur = 0
     trades.forEach(t => { if (t.pnl < 0) { cur++; maxC = Math.max(maxC, cur) } else cur = 0 })
-    if (maxC >= 2) flags.push({ title: 'Consecutive Losses', msg: `Max consecutive losing streak: ${maxC}. Check if mentee is increasing size or frequency after losses.` })
-    const offPlanWins = trades.filter(t => t.plan !== 'Yes' && t.pnl > 0)
-    if (offPlanWins.length) flags.push({ title: 'Off-Plan Wins', msg: `${offPlanWins.length} deviation(s) were profitable. This can reinforce undisciplined behavior — address directly.` })
+    if (maxC >= 2) flags.push({ title: 'Consecutive Losses', msg: 'Max streak: ' + maxC + '. Check for size/frequency increases after losses.' })
+    const opw = trades.filter(t => t.plan !== 'Yes' && t.pnl > 0)
+    if (opw.length) flags.push({ title: 'Off-Plan Wins', msg: opw.length + ' deviation(s) were profitable — reinforcing bad habits. Address directly.' })
     return flags
   }
 
-  // Milestones
   const getMilestones = () => {
     const ci1 = currentMenteeData?.plan?.ci1 || 200
-    const ci2trigger = currentMenteeData?.plan?.ci2Trigger || 3000
+    const ci2t = currentMenteeData?.plan?.ci2Trigger || 3000
     const ci2 = currentMenteeData?.plan?.ci2 || 500
-    const ms = [portStart]
-    let v = portStart + ci1
-    while (v <= ci2trigger && ms.length < 8) { ms.push(v); v += ci1 }
-    if (ms[ms.length - 1] < ci2trigger) ms.push(ci2trigger)
+    const ms = [portStart]; let v = portStart + ci1
+    while (v <= ci2t && ms.length < 8) { ms.push(v); v += ci1 }
+    if (ms[ms.length - 1] < ci2t) ms.push(ci2t)
     if (ms.length < 8) ms.push(ms[ms.length - 1] + ci2)
     return ms
   }
 
-  // Setup breakdown
   const setupBreakdown = trades.reduce((acc, t) => {
     if (!acc[t.setup]) acc[t.setup] = { count: 0, pnl: 0 }
-    acc[t.setup].count++
-    acc[t.setup].pnl += t.pnl
+    acc[t.setup].count++; acc[t.setup].pnl += t.pnl
     return acc
   }, {} as Record<string, { count: number; pnl: number }>)
 
-  if (!mounted) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', letterSpacing: '4px', fontSize: '13px' }}>
-      LOADING...
-    </div>
-  )
+  if (!mounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', letterSpacing: '4px', fontSize: '13px' }}>LOADING...</div>
 
   return (
     <div className={styles.app}>
-      {/* Header */}
       <header className={styles.header}>
         <div className={styles.wordmark}>ADEX<span>TRADES</span></div>
         <div className={styles.headerRight}>
-          {activeMentee && (
-            <div className={styles.activeMenteeBadge}>
-              <span className={styles.avatar}>{activeMentee.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}</span>
-              <span>{activeMentee}</span>
-            </div>
-          )}
-          {saving && <div style={{fontSize:11,color:"var(--gold-dim)",letterSpacing:"1px"}}>SAVING...</div>}
+          {activeMentee && <div className={styles.activeMenteeBadge}><span className={styles.avatar}>{activeMentee.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0,2)}</span><span>{activeMentee}</span></div>}
+          {saving && <div style={{ fontSize: 10, color: 'var(--gold-dim)', letterSpacing: '1.5px' }}>SAVING...</div>}
           <div className={styles.headerMeta}>Platinum Mentorship</div>
         </div>
       </header>
-
-      {/* Tabs */}
       <nav className={styles.tabs}>
-        {TABS.map((tab, i) => (
-          <button
-            key={tab}
-            className={`${styles.tab} ${activeTab === i ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab(i)}
-          >
-            {tab}
-          </button>
-        ))}
+        {TABS.map((tab, i) => <button key={tab} className={styles.tab + (activeTab === i ? ' ' + styles.tabActive : '')} onClick={() => setActiveTab(i)}>{tab}</button>)}
       </nav>
-
       <main className={styles.main}>
+
         {/* ═══ TAB 0: TRADE PLAN ═══ */}
         {activeTab === 0 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
               <div className={styles.field} style={{ flex: 1 }}>
                 <label className={styles.label}>Active Mentee</label>
-                <select className={styles.select} value={activeMentee} onChange={e => {
-                  if (e.target.value === '__new__') { setShowNewMentee(true); return }
-                  handleSelectMentee(e.target.value)
-                }}>
+                <select className={styles.select} value={activeMentee} onChange={e => { if (e.target.value === '__new__') { setShowNewMentee(true); return } handleSelectMentee(e.target.value) }}>
                   <option value="">— select mentee —</option>
                   {menteeNames.map(n => <option key={n} value={n}>{n}</option>)}
                   <option value="__new__">+ Add new mentee...</option>
@@ -305,63 +239,45 @@ export default function Dashboard() {
               </div>
               <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
             </div>
-
             {showNewMentee && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
                 <div className={styles.formGrid}>
-                  <div className={styles.field}>
-                    <label className={styles.label}>New Mentee Name</label>
-                    <input className={styles.input} value={newMenteeName} onChange={e => setNewMenteeName(e.target.value)} placeholder="Full name" onKeyDown={e => e.key === 'Enter' && handleAddMentee()} />
-                  </div>
+                  <div className={styles.field}><label className={styles.label}>New Mentee Name</label><input className={styles.input} value={newMenteeName} onChange={e => setNewMenteeName(e.target.value)} placeholder="Full name" onKeyDown={e => e.key === 'Enter' && handleAddMentee()} /></div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className={styles.btnGold} onClick={handleAddMentee}>Add Mentee</button>
-                  <button className={styles.btnGhost} onClick={() => setShowNewMentee(false)}>Cancel</button>
-                </div>
+                <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleAddMentee}>Add Mentee</button><button className={styles.btnGhost} onClick={() => setShowNewMentee(false)}>Cancel</button></div>
               </div>
             )}
 
-            <div className={styles.sectionLabel}>Section 1 — Mentee Profile</div>
+            <div className={styles.sectionLabel}>Section 1 — Goals &amp; Vision</div>
+            <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>Start here. The entire plan is built backward from these goals.</div>
             <div className={styles.formGrid}>
-              <div className={styles.field}>
-                <label className={styles.label}>Trading Experience</label>
-                <select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}>
-                  <option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option>
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Primary Focus</label>
-                <select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}>
-                  <option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option>
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Starting Portfolio Size ($)</label>
-                <input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" />
-              </div>
+              <div className={styles.field}><label className={styles.label}>Short-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalShortTerm} onChange={e => setPlan(p => ({ ...p, goalShortTerm: e.target.value }))} placeholder="e.g. Turn $5K into $10K in 6 months buying options on TheStrat setups" /></div>
+              <div className={styles.field}><label className={styles.label}>Long-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalLongTerm} onChange={e => setPlan(p => ({ ...p, goalLongTerm: e.target.value }))} placeholder="e.g. Build a $50K portfolio generating consistent monthly income within 3 years" /></div>
+              <div className={styles.field}><label className={styles.label}>Portfolio Target ($)</label><input className={styles.input} type="number" value={plan.goalPortTarget || ''} onChange={e => setPlan(p => ({ ...p, goalPortTarget: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 10000" /></div>
+              <div className={styles.field}><label className={styles.label}>Target Timeline</label><input className={styles.input} value={plan.goalTimeline} onChange={e => setPlan(p => ({ ...p, goalTimeline: e.target.value }))} placeholder="e.g. 6 months, by end of 2025" /></div>
             </div>
 
-            <div className={styles.sectionLabel}>Section 2 — Trade Rules</div>
+            <div className={styles.sectionLabel}>Section 2 — Assets &amp; Profile</div>
+            <div className={styles.formGrid3}>
+              <div className={styles.field}><label className={styles.label}>Total Account Size ($)</label><input className={styles.input} type="number" value={plan.accountSize || ''} onChange={e => setPlan(p => ({ ...p, accountSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 8000" /></div>
+              <div className={styles.field}><label className={styles.label}>Cash Available to Trade ($)</label><input className={styles.input} type="number" value={plan.cashAvailable || ''} onChange={e => setPlan(p => ({ ...p, cashAvailable: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 5000" /></div>
+              <div className={styles.field}><label className={styles.label}>Trading Experience</label><select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}><option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option></select></div>
+              <div className={styles.field} style={{ gridColumn: '1 / -1' }}><label className={styles.label}>Shares / Assets Currently Held</label><input className={styles.input} value={plan.sharesHeld} onChange={e => setPlan(p => ({ ...p, sharesHeld: e.target.value }))} placeholder="e.g. 50 shares $AAPL, 100 shares $MSFT, $2K in SCHD" /></div>
+              <div className={styles.field}><label className={styles.label}>Primary Focus</label><select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}><option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option></select></div>
+              <div className={styles.field}><label className={styles.label}>Starting Portfolio Size ($)</label><input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" /></div>
+            </div>
+
+            <div className={styles.sectionLabel}>Section 3 — Trade Rules</div>
             <div className={styles.formGrid3}>
               <div className={styles.field}><label className={styles.label}>Max Active Trades</label><input className={styles.input} type="number" value={plan.maxTrades || ''} onChange={e => setPlan(p => ({ ...p, maxTrades: parseInt(e.target.value) || 0 }))} placeholder="e.g. 2" /></div>
               <div className={styles.field}><label className={styles.label}>Max Size Per Trade ($)</label><input className={styles.input} type="number" value={plan.maxSize || ''} onChange={e => setPlan(p => ({ ...p, maxSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 500" /></div>
               <div className={styles.field}><label className={styles.label}>Hard Stop Loss (%)</label><input className={styles.input} type="number" value={plan.stopLoss || ''} onChange={e => setPlan(p => ({ ...p, stopLoss: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 40" /></div>
               <div className={styles.field}><label className={styles.label}>Profit Target (%)</label><input className={styles.input} type="number" value={plan.target || ''} onChange={e => setPlan(p => ({ ...p, target: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 30" /></div>
-              <div className={styles.field}>
-                <label className={styles.label}>DTE Rule</label>
-                <select className={styles.select} value={plan.dte} onChange={e => setPlan(p => ({ ...p, dte: e.target.value }))}>
-                  <option>No weekly expiration swings</option><option>Min 14 DTE</option><option>Min 21 DTE</option><option>Min 30 DTE</option><option>No DTE restriction</option>
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Requires Adex Approval</label>
-                <select className={styles.select} value={plan.approval} onChange={e => setPlan(p => ({ ...p, approval: e.target.value }))}>
-                  <option>All trades</option><option>Trades over $300</option><option>Trades over $500</option><option>New tickers only</option><option>None — full discretion</option>
-                </select>
-              </div>
+              <div className={styles.field}><label className={styles.label}>DTE Rule</label><select className={styles.select} value={plan.dte} onChange={e => setPlan(p => ({ ...p, dte: e.target.value }))}><option>No weekly expiration swings</option><option>Min 14 DTE</option><option>Min 21 DTE</option><option>Min 30 DTE</option><option>No DTE restriction</option></select></div>
+              <div className={styles.field}><label className={styles.label}>Requires Adex Approval</label><select className={styles.select} value={plan.approval} onChange={e => setPlan(p => ({ ...p, approval: e.target.value }))}><option>All trades</option><option>Trades over $300</option><option>Trades over $500</option><option>New tickers only</option><option>None — full discretion</option></select></div>
             </div>
 
-            <div className={styles.sectionLabel}>Section 3 — Milestone Check-ins</div>
+            <div className={styles.sectionLabel}>Section 4 — Milestone Check-ins</div>
             <div className={styles.formGrid}>
               <div className={styles.field}><label className={styles.label}>First Check-in Increment ($)</label><input className={styles.input} type="number" value={plan.ci1 || ''} onChange={e => setPlan(p => ({ ...p, ci1: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 200" /></div>
               <div className={styles.field}><label className={styles.label}>Escalate Check-in At ($)</label><input className={styles.input} type="number" value={plan.ci2Trigger || ''} onChange={e => setPlan(p => ({ ...p, ci2Trigger: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 3000" /></div>
@@ -369,47 +285,29 @@ export default function Dashboard() {
               <div className={styles.field}><label className={styles.label}>Max Loss Before Review ($)</label><input className={styles.input} type="number" value={plan.drawdown || ''} onChange={e => setPlan(p => ({ ...p, drawdown: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 400" /></div>
             </div>
 
-            <div className={styles.sectionLabel}>Section 4 — Approved & Restricted</div>
+            <div className={styles.sectionLabel}>Section 5 — Approved &amp; Restricted</div>
             <div className={styles.formGrid}>
               <div className={styles.field}>
                 <label className={styles.label}>Approved Tickers / Setups</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className={styles.input} value={approvedInput} onChange={e => setApprovedInput(e.target.value)} placeholder="$AAPL, 2D setups..." onKeyDown={e => { if (e.key === 'Enter' && approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }} />
-                  <button className={styles.smallBtn} onClick={() => { if (approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }}>Add</button>
-                </div>
-                <div className={styles.tagWrap}>{plan.approved.map((t, i) => <span key={i} className={styles.tag}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, approved: p.approved.filter((_, j) => j !== i) }))}>×</span></span>)}</div>
+                <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={approvedInput} onChange={e => setApprovedInput(e.target.value)} placeholder="$AAPL, 2D setups..." onKeyDown={e => { if (e.key === 'Enter' && approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }}>Add</button></div>
+                <div className={styles.tagWrap}>{plan.approved.map((t, i) => <span key={i} className={styles.tag}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, approved: p.approved.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
               </div>
               <div className={styles.field}>
                 <label className={styles.label}>Restricted / Off-Limits</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input className={styles.input} value={restrictedInput} onChange={e => setRestrictedInput(e.target.value)} placeholder="Penny stocks, 0DTE..." onKeyDown={e => { if (e.key === 'Enter' && restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }} />
-                  <button className={styles.smallBtn} onClick={() => { if (restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }}>Add</button>
-                </div>
-                <div className={styles.tagWrap}>{plan.restricted.map((t, i) => <span key={i} className={`${styles.tag} ${styles.tagRed}`}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, restricted: p.restricted.filter((_, j) => j !== i) }))}>×</span></span>)}</div>
+                <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={restrictedInput} onChange={e => setRestrictedInput(e.target.value)} placeholder="Penny stocks, 0DTE..." onKeyDown={e => { if (e.key === 'Enter' && restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }}>Add</button></div>
+                <div className={styles.tagWrap}>{plan.restricted.map((t, i) => <span key={i} className={styles.tag + ' ' + styles.tagRed}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, restricted: p.restricted.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
               </div>
             </div>
 
-            <div className={styles.sectionLabel}>Section 5 — Psychology Notes</div>
-            <div className={styles.field} style={{ marginBottom: 16 }}>
-              <label className={styles.label}>Known Behavior Patterns / Flags</label>
-              <textarea className={styles.textarea} value={plan.psych} onChange={e => setPlan(p => ({ ...p, psych: e.target.value }))} placeholder="e.g. Tends to over-trade after a loss. Needs clear rules or will press buttons in gray areas..." />
-            </div>
-            <div className={styles.field} style={{ marginBottom: 20 }}>
-              <label className={styles.label}>Goals for This Mentee</label>
-              <textarea className={styles.textarea} value={plan.goals} onChange={e => setPlan(p => ({ ...p, goals: e.target.value }))} placeholder="What are you specifically trying to develop in this mentee this month?" />
-            </div>
+            <div className={styles.sectionLabel}>Section 6 — Psychology Notes</div>
+            <div className={styles.field} style={{ marginBottom: 16 }}><label className={styles.label}>Known Behavior Patterns / Flags</label><textarea className={styles.textarea} value={plan.psych} onChange={e => setPlan(p => ({ ...p, psych: e.target.value }))} placeholder="e.g. Tends to over-trade after a loss. Needs explicit rules or will press buttons in gray areas..." /></div>
+            <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>Additional Coaching Notes</label><textarea className={styles.textarea} value={plan.goals} onChange={e => setPlan(p => ({ ...p, goals: e.target.value }))} placeholder="What are you specifically focused on developing in this mentee this month?" /></div>
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
               <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
             </div>
-
-            {(planAI || planAILoading) && (
-              <div style={{ marginTop: 20 }}>
-                <div className={styles.sectionLabel}>AI-Generated Plan Summary</div>
-                <div className={styles.aiOutput}>{planAILoading ? 'Generating plan summary...' : planAI}</div>
-              </div>
-            )}
+            {(planAI || planAILoading) && <div style={{ marginTop: 20 }}><div className={styles.sectionLabel}>AI-Generated Plan Summary</div><div className={styles.aiOutput}>{planAILoading ? 'Generating plan summary...' : planAI}</div></div>}
           </div>
         )}
 
@@ -417,63 +315,34 @@ export default function Dashboard() {
         {activeTab === 1 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
-              <div className={styles.field} style={{ flex: 1 }}>
-                <label className={styles.label}>Mentee</label>
-                <select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}>
-                  <option value="">— select mentee —</option>
-                  {menteeNames.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Session Date</label>
-                <input className={styles.input} type="date" value={intakeDate} onChange={e => setIntakeDate(e.target.value)} style={{ width: 160 }} />
-              </div>
+              <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+              <div className={styles.field}><label className={styles.label}>Session Date</label><input className={styles.input} type="date" value={intakeDate} onChange={e => setIntakeDate(e.target.value)} style={{ width: 160 }} /></div>
             </div>
-
+            {activeMentee && currentMenteeData?.plan?.goalShortTerm && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
+                <span style={{ color: 'var(--gold)', fontWeight: 600 }}>Goal: </span>{currentMenteeData.plan.goalShortTerm}{currentMenteeData.plan.goalTimeline && <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>— {currentMenteeData.plan.goalTimeline}</span>}
+              </div>
+            )}
             <div className={styles.twoCol}>
               <div>
                 <div className={styles.sectionLabel}>Pre-Session Form</div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>1. Trades taken since last session</label><textarea className={styles.textarea} value={intakeTrades} onChange={e => setIntakeTrades(e.target.value)} placeholder="List tickers, direction, outcome..." /></div>
-                <div className={styles.field} style={{ marginBottom: 14 }}>
-                  <label className={styles.label}>2. Did you follow the trade plan?</label>
-                  <select className={styles.select} value={intakeFollowed} onChange={e => setIntakeFollowed(e.target.value)}>
-                    <option value="">—</option><option>Yes, fully</option><option>Mostly — minor deviations</option><option>Partially — some deviations</option><option>No — deviated significantly</option>
-                  </select>
-                </div>
+                <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>2. Did you follow the trade plan?</label><select className={styles.select} value={intakeFollowed} onChange={e => setIntakeFollowed(e.target.value)}><option value="">—</option><option>Yes, fully</option><option>Mostly — minor deviations</option><option>Partially — some deviations</option><option>No — deviated significantly</option></select></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>3. Where did you deviate (if any)?</label><textarea className={styles.textarea} value={intakeDeviation} onChange={e => setIntakeDeviation(e.target.value)} placeholder="Be specific. Which rule? Why?" /></div>
-                <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>4. P&L since last session ($)</label><input className={styles.input} type="number" value={intakePnl} onChange={e => setIntakePnl(e.target.value)} placeholder="Negative for loss, e.g. -150" /></div>
+                <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>4. P&amp;L since last session ($)</label><input className={styles.input} type="number" value={intakePnl} onChange={e => setIntakePnl(e.target.value)} placeholder="Negative for loss, e.g. -150" /></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}>
                   <label className={styles.label}>5. Emotional state during worst trade (1=calm, 5=reactive)</label>
-                  <div className={styles.emotionRow}>
-                    {[1,2,3,4,5].map(n => (
-                      <button key={n} className={`${styles.emotionBtn} ${intakeEmotion === n ? styles.emotionBtnActive : ''}`} onClick={() => setIntakeEmotion(n)}>
-                        {n}<br /><span style={{ fontSize: 10 }}>{['Calm','Mild','Tense','Reactive','Emotional'][n-1]}</span>
-                      </button>
-                    ))}
-                  </div>
+                  <div className={styles.emotionRow}>{[1,2,3,4,5].map(n => <button key={n} className={styles.emotionBtn + (intakeEmotion === n ? ' ' + styles.emotionBtnActive : '')} onClick={() => setIntakeEmotion(n)}>{n}<br /><span style={{ fontSize: 10 }}>{['Calm','Mild','Tense','Reactive','Emotional'][n-1]}</span></button>)}</div>
                 </div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>6. What do you want to cover this session?</label><textarea className={styles.textarea} value={intakeFocus} onChange={e => setIntakeFocus(e.target.value)} placeholder="Specific setups, concepts, trades to review..." /></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>7. Biggest win / insight this week</label><textarea className={styles.textarea} value={intakeWin} onChange={e => setIntakeWin(e.target.value)} placeholder="What clicked? What went right?" /></div>
-                <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>8. Biggest mistake / what you&apos;d do differently</label><textarea className={styles.textarea} value={intakeMistake} onChange={e => setIntakeMistake(e.target.value)} placeholder="Be honest. No judgment here." /></div>
+                <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>8. Biggest mistake / what you would do differently</label><textarea className={styles.textarea} value={intakeMistake} onChange={e => setIntakeMistake(e.target.value)} placeholder="Be honest. No judgment here." /></div>
                 <button className={styles.btnGold} onClick={handleAnalyzeIntake} disabled={intakeAILoading}>{intakeAILoading ? 'Analyzing...' : 'Analyze with AI'}</button>
               </div>
-
               <div>
                 <div className={styles.sectionLabel}>AI Session Brief</div>
-                {intakeAI ? <div className={styles.aiOutput}>{intakeAI}</div> : <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fill out the form and click &quot;Analyze with AI&quot; to generate a pre-session brief.</p>}
-
-                {intakeFlags.length > 0 && (
-                  <>
-                    <div className={styles.divider} />
-                    <div className={styles.sectionLabel}>Pattern Flags</div>
-                    {intakeFlags.map((f, i) => (
-                      <div key={i} className={styles.flag}>
-                        <div className={styles.flagTitle}>{f.title}</div>
-                        {f.msg}
-                      </div>
-                    ))}
-                  </>
-                )}
+                {intakeAI ? <div className={styles.aiOutput}>{intakeAI}</div> : <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fill out the form and click Analyze with AI to generate a pre-session brief.</p>}
+                {intakeFlags.length > 0 && <><div className={styles.divider} /><div className={styles.sectionLabel}>Pattern Flags</div>{intakeFlags.map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>)}</>}
               </div>
             </div>
           </div>
@@ -483,16 +352,9 @@ export default function Dashboard() {
         {activeTab === 2 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
-              <div className={styles.field} style={{ flex: 1 }}>
-                <label className={styles.label}>Mentee</label>
-                <select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}>
-                  <option value="">— select mentee —</option>
-                  {menteeNames.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
+              <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
               <button className={styles.btnGold} onClick={() => { if (!activeMentee) { alert('Select a mentee first.'); return } setShowTradeForm(s => !s) }}>+ Log Trade</button>
             </div>
-
             {showTradeForm && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
                 <div className={styles.cardTitle}>New Trade Entry</div>
@@ -503,38 +365,31 @@ export default function Dashboard() {
                   <div className={styles.field}><label className={styles.label}>Entry Price ($)</label><input className={styles.input} type="number" value={tradeEntry} onChange={e => setTradeEntry(e.target.value)} placeholder="1.45" step="0.01" /></div>
                   <div className={styles.field}><label className={styles.label}>Exit Price ($)</label><input className={styles.input} type="number" value={tradeExit} onChange={e => setTradeExit(e.target.value)} placeholder="2.10" step="0.01" /></div>
                   <div className={styles.field}><label className={styles.label}>Contracts / Shares</label><input className={styles.input} type="number" value={tradeQty} onChange={e => setTradeQty(e.target.value)} placeholder="2" /></div>
-                  <div className={styles.field}><label className={styles.label}>P&L ($)</label><input className={styles.input} type="number" value={tradePnl} onChange={e => setTradePnl(e.target.value)} placeholder="Auto-calc or manual" /></div>
+                  <div className={styles.field}><label className={styles.label}>P&amp;L ($)</label><input className={styles.input} type="number" value={tradePnl} onChange={e => setTradePnl(e.target.value)} placeholder="Auto-calc or manual" /></div>
                   <div className={styles.field}><label className={styles.label}>Followed Plan?</label><select className={styles.select} value={tradePlanFollow} onChange={e => setTradePlanFollow(e.target.value)}><option>Yes</option><option>No — deviated</option><option>Partially</option></select></div>
                   <div className={styles.field}><label className={styles.label}>Emotion Score</label><select className={styles.select} value={tradeEmotion} onChange={e => setTradeEmotion(e.target.value)}><option value="1">1 — Calm</option><option value="2">2 — Mild</option><option value="3">3 — Tense</option><option value="4">4 — Reactive</option><option value="5">5 — Emotional</option></select></div>
                 </div>
                 <div className={styles.field} style={{ marginBottom: 12 }}><label className={styles.label}>Notes</label><input className={styles.input} value={tradeNotes} onChange={e => setTradeNotes(e.target.value)} placeholder="Why you took it, what you saw..." /></div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className={styles.btnGold} onClick={handleLogTrade}>Log Trade</button>
-                  <button className={styles.btnGhost} onClick={() => setShowTradeForm(false)}>Cancel</button>
-                </div>
+                <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleLogTrade}>Log Trade</button><button className={styles.btnGhost} onClick={() => setShowTradeForm(false)}>Cancel</button></div>
               </div>
             )}
-
             <div className={styles.sectionLabel}>Trade History {activeMentee && trades.length > 0 && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— {trades.length} trades</span>}</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr>
-                  <th>Date</th><th>Ticker</th><th>Direction</th><th>Setup</th><th>P&L</th><th>Plan</th><th>Emotion</th><th>Notes</th><th></th>
-                </tr></thead>
+                <thead><tr><th style={{ width: 90 }}>Date</th><th style={{ width: 80 }}>Ticker</th><th style={{ width: 90 }}>Direction</th><th style={{ width: 100 }}>Setup</th><th style={{ width: 80 }}>P&amp;L</th><th style={{ width: 80 }}>Plan</th><th style={{ width: 70 }}>Emotion</th><th>Notes</th><th style={{ width: 30 }}></th></tr></thead>
                 <tbody>
-                  {trades.length === 0 ? (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
-                  ) : [...trades].reverse().map(t => (
+                  {trades.length === 0 ? <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
+                  : [...trades].reverse().map(t => (
                     <tr key={t.id}>
                       <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
                       <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
                       <td>{t.dir}</td>
                       <td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
-                      <td><span className={`${styles.badge} ${t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen}`}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
-                      <td><span className={`${styles.badge} ${t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated}`}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Deviated'}</span></td>
+                      <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
+                      <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Deviated'}</span></td>
                       <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
-                      <td style={{ color: 'var(--text-dim)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.notes}</td>
-                      <td><button onClick={() => handleDeleteTrade(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>✕</button></td>
+                      <td style={{ color: 'var(--text-dim)' }}>{t.notes}</td>
+                      <td><button onClick={() => handleDeleteTrade(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>x</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -547,43 +402,47 @@ export default function Dashboard() {
         {activeTab === 3 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
-              <div className={styles.field} style={{ flex: 1 }}>
-                <label className={styles.label}>Mentee Dashboard</label>
-                <select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}>
-                  <option value="">— select mentee —</option>
-                  {menteeNames.map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </div>
+              <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee Dashboard</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
               <button className={styles.btnOutline} onClick={handleDashAI} disabled={dashAILoading}>{dashAILoading ? 'Analyzing...' : 'AI Insights'}</button>
             </div>
-
             {!activeMentee ? (
               <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontSize: 13 }}>Select a mentee to view their dashboard.</div>
             ) : (
               <>
+                {/* Goal Progress */}
+                {goalTarget > 0 && (
+                  <div className={styles.card} style={{ marginBottom: 16, borderColor: 'rgba(201,168,76,0.35)' }}>
+                    <div className={styles.cardTitle}>Goal Progress</div>
+                    <div className={styles.twoCol} style={{ gap: 24, marginBottom: 12 }}>
+                      <div>
+                        {goalShortTerm && <div style={{ marginBottom: 8 }}><div style={{ fontSize: 10, color: 'var(--gold-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 3 }}>Short-Term Goal</div><div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{goalShortTerm}</div></div>}
+                        {goalLongTerm && <div><div style={{ fontSize: 10, color: 'var(--gold-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 3 }}>Long-Term Goal</div><div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5 }}>{goalLongTerm}</div></div>}
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 10, color: 'var(--gold-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 4 }}>Portfolio vs Target</div>
+                            <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 28, fontWeight: 700, color: portVal >= portStart ? 'var(--green)' : 'var(--red)', lineHeight: 1 }}>${Math.round(portVal).toLocaleString()}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3 }}>of ${goalTarget.toLocaleString()} target{goalTimeline ? ' · ' + goalTimeline : ''}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 36, fontWeight: 700, color: goalPct >= 75 ? 'var(--green)' : goalPct >= 40 ? 'var(--gold)' : 'var(--text-dim)', lineHeight: 1 }}>{goalPct}%</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>of goal reached</div>
+                          </div>
+                        </div>
+                        <div style={{ background: 'var(--bg4)', borderRadius: 4, height: 8, overflow: 'hidden' }}><div style={{ height: '100%', width: goalPct + '%', background: goalPct >= 75 ? 'var(--green)' : 'var(--gold)', borderRadius: 4, transition: 'width 0.6s ease' }} /></div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>${Math.max(0, goalTarget - portVal).toLocaleString()} remaining to goal</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Stat cards */}
                 <div className={styles.statGrid}>
-                  <div className={styles.statCard}>
-                    <div className={styles.statLabel}>Portfolio Value</div>
-                    <div className={`${styles.statValue} ${portVal >= portStart ? styles.statGreen : styles.statRed}`}>${Math.round(portVal).toLocaleString()}</div>
-                    <div className={styles.statSub}>started at ${portStart.toLocaleString()}</div>
-                    <div className={styles.progressWrap}><div className={styles.progressFill} style={{ width: Math.min(100, Math.max(0, ((portVal - portStart) / (portStart * 0.5)) * 100)) + '%' }} /></div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statLabel}>Win Rate</div>
-                    <div className={`${styles.statValue} ${winRate >= 50 ? styles.statGreen : ''}`}>{winRate}%</div>
-                    <div className={styles.statSub}>{wins} wins / {trades.length} trades</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statLabel}>Discipline Score</div>
-                    <div className={`${styles.statValue} ${discScore >= 75 ? styles.statGreen : discScore > 0 ? styles.statRed : ''}`}>{discScore}%</div>
-                    <div className={styles.statSub}>{planFollowed} of {trades.length} clean</div>
-                  </div>
-                  <div className={styles.statCard}>
-                    <div className={styles.statLabel}>Avg Emotion Score</div>
-                    <div className={`${styles.statValue} ${parseFloat(avgEmotion) <= 2 ? styles.statGreen : parseFloat(avgEmotion) >= 4 ? styles.statRed : ''}`}>{avgEmotion}</div>
-                    <div className={styles.statSub}>1 = calm / 5 = reactive</div>
-                  </div>
+                  <div className={styles.statCard}><div className={styles.statLabel}>Portfolio Value</div><div className={styles.statValue + ' ' + (portVal >= portStart ? styles.statGreen : styles.statRed)}>${Math.round(portVal).toLocaleString()}</div><div className={styles.statSub}>started at ${portStart.toLocaleString()}</div><div className={styles.progressWrap}><div className={styles.progressFill} style={{ width: Math.min(100, Math.max(0, ((portVal - portStart) / (portStart * 0.5)) * 100)) + '%' }} /></div></div>
+                  <div className={styles.statCard}><div className={styles.statLabel}>Win Rate</div><div className={styles.statValue + ' ' + (winRate >= 50 ? styles.statGreen : '')}>{winRate}%</div><div className={styles.statSub}>{wins} wins / {trades.length} trades</div></div>
+                  <div className={styles.statCard}><div className={styles.statLabel}>Discipline Score</div><div className={styles.statValue + ' ' + (discScore >= 75 ? styles.statGreen : discScore > 0 ? styles.statRed : '')}>{discScore}%</div><div className={styles.statSub}>{planFollowed} of {trades.length} clean</div></div>
+                  <div className={styles.statCard}><div className={styles.statLabel}>Avg Emotion Score</div><div className={styles.statValue + ' ' + (parseFloat(avgEmotion) <= 2 ? styles.statGreen : parseFloat(avgEmotion) >= 4 ? styles.statRed : '')}>{avgEmotion}</div><div className={styles.statSub}>1 = calm / 5 = reactive</div></div>
                 </div>
 
                 {/* Milestones */}
@@ -591,94 +450,32 @@ export default function Dashboard() {
                   <div className={styles.cardTitle}>Portfolio Milestone Tracker</div>
                   {(() => {
                     const ms = getMilestones()
-                    return (
-                      <>
-                        <div className={styles.milestoneTrack}>
-                          {ms.map((m, i) => {
-                            const done = portVal > m
-                            const curr = portVal >= m && (i === ms.length - 1 || portVal < ms[i + 1])
-                            return (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < ms.length - 1 ? 1 : 0 }}>
-                                <div className={`${styles.msNode} ${done ? styles.msNodeDone : curr ? styles.msNodeCurrent : styles.msNodeFuture}`}>{done ? '✓' : i + 1}</div>
-                                {i < ms.length - 1 && <div className={`${styles.msLine} ${done ? styles.msLineDone : ''}`} />}
-                              </div>
-                            )
-                          })}
-                        </div>
-                        <div className={styles.milestoneLabels}>
-                          {ms.map((m, i) => <span key={i}>{m >= 1000 ? '$' + (m / 1000).toFixed(1) + 'k' : '$' + m}</span>)}
-                        </div>
-                        {(() => {
-                          const nextMs = ms.find(m => portVal < m)
-                          if (!nextMs) return null
-                          const idx = ms.indexOf(nextMs)
-                          const prev = ms[idx - 1] || portStart
-                          const pct = Math.min(100, Math.max(0, ((portVal - prev) / (nextMs - prev)) * 100))
-                          return <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-dim)' }}>Next checkpoint: <span style={{ color: 'var(--gold)' }}>${Math.round(nextMs).toLocaleString()}</span> — ${Math.round(nextMs - portVal).toLocaleString()} away &nbsp;|&nbsp; Progress: <span style={{ color: 'var(--gold)' }}>{Math.round(pct)}%</span></div>
-                        })()}
-                      </>
-                    )
+                    return <>
+                      <div className={styles.milestoneTrack}>{ms.map((m, i) => { const done = portVal > m; const curr = portVal >= m && (i === ms.length - 1 || portVal < ms[i+1]); return <div key={i} style={{ display: 'flex', alignItems: 'center', flex: i < ms.length - 1 ? 1 : 0 }}><div className={styles.msNode + ' ' + (done ? styles.msNodeDone : curr ? styles.msNodeCurrent : styles.msNodeFuture)}>{done ? '✓' : i+1}</div>{i < ms.length - 1 && <div className={styles.msLine + ' ' + (done ? styles.msLineDone : '')} />}</div> })}</div>
+                      <div className={styles.milestoneLabels}>{ms.map((m, i) => <span key={i}>{m >= 1000 ? '$' + (m/1000).toFixed(1) + 'k' : '$' + m}</span>)}</div>
+                      {(() => { const nextMs = ms.find(m => portVal < m); if (!nextMs) return null; const idx = ms.indexOf(nextMs); const prev = ms[idx-1] || portStart; const pct = Math.min(100, Math.max(0, ((portVal - prev) / (nextMs - prev)) * 100)); return <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-dim)' }}>Next checkpoint: <span style={{ color: 'var(--gold)' }}>${Math.round(nextMs).toLocaleString()}</span> — ${Math.round(nextMs - portVal).toLocaleString()} away | Progress: <span style={{ color: 'var(--gold)' }}>{Math.round(pct)}%</span></div> })()}
+                    </>
                   })()}
                 </div>
 
                 <div className={styles.twoCol}>
-                  {/* Plan summary */}
                   <div className={styles.card}>
                     <div className={styles.cardTitle}>Active Trade Plan</div>
-                    {currentMenteeData?.plan?.portStart ? (
-                      <>
-                        {[
-                          ['Focus', currentMenteeData.plan.focus],
-                          ['Max Trades', currentMenteeData.plan.maxTrades + ' at a time'],
-                          ['Max Size / Trade', '$' + currentMenteeData.plan.maxSize],
-                          ['Stop Loss', currentMenteeData.plan.stopLoss + '%'],
-                          ['Profit Target', currentMenteeData.plan.target + '%'],
-                          ['DTE Rule', currentMenteeData.plan.dte],
-                          ['Approval', currentMenteeData.plan.approval],
-                          ['Check-ins', 'Every $' + currentMenteeData.plan.ci1 + ' → $' + currentMenteeData.plan.ci2 + ' after $' + currentMenteeData.plan.ci2Trigger],
-                        ].map(([k, v]) => (
-                          <div key={k} className={styles.ruleItem}><span className={styles.ruleKey}>{k}</span><span className={styles.ruleVal}>{v || '—'}</span></div>
-                        ))}
-                        {currentMenteeData.plan.restricted?.length > 0 && (
-                          <div style={{ marginTop: 10 }}>
-                            <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>Off-Limits</div>
-                            {currentMenteeData.plan.restricted.map((r, i) => <span key={i} className={`${styles.tag} ${styles.tagRed}`}>{r}</span>)}
-                          </div>
-                        )}
-                      </>
-                    ) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No plan saved. Fill out the Trade Plan tab.</p>}
+                    {currentMenteeData?.plan?.portStart ? <>
+                      {[['Focus', currentMenteeData.plan.focus], ['Max Trades', currentMenteeData.plan.maxTrades + ' at a time'], ['Max Size / Trade', '$' + currentMenteeData.plan.maxSize], ['Stop Loss', currentMenteeData.plan.stopLoss + '%'], ['Profit Target', currentMenteeData.plan.target + '%'], ['DTE Rule', currentMenteeData.plan.dte], ['Approval', currentMenteeData.plan.approval], ['Check-ins', 'Every $' + currentMenteeData.plan.ci1 + ' then $' + currentMenteeData.plan.ci2 + ' after $' + currentMenteeData.plan.ci2Trigger]].map(([k, v]) => <div key={k} className={styles.ruleItem}><span className={styles.ruleKey}>{k}</span><span className={styles.ruleVal}>{v || '—'}</span></div>)}
+                      {currentMenteeData.plan.sharesHeld && <div style={{ marginTop: 10 }}><div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>Assets Held</div><div style={{ fontSize: 12, color: 'var(--text-dim)' }}>{currentMenteeData.plan.sharesHeld}</div></div>}
+                      {currentMenteeData.plan.restricted?.length > 0 && <div style={{ marginTop: 10 }}><div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>Off-Limits</div>{currentMenteeData.plan.restricted.map((r, i) => <span key={i} className={styles.tag + ' ' + styles.tagRed}>{r}</span>)}</div>}
+                    </> : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No plan saved. Fill out the Trade Plan tab.</p>}
                   </div>
-
                   <div>
-                    {/* Flags */}
                     <div className={styles.sectionLabel}>Psychology Flags</div>
-                    {getFlags().length > 0 ? getFlags().map((f, i) => (
-                      <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>
-                    )) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags detected. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
-
+                    {getFlags().length > 0 ? getFlags().map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags detected. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
                     <div className={styles.divider} />
-
-                    {/* Setup breakdown */}
                     <div className={styles.sectionLabel}>Setup Breakdown</div>
-                    {Object.entries(setupBreakdown).length > 0 ? Object.entries(setupBreakdown).map(([s, d]) => (
-                      <div key={s} className={styles.ruleItem}>
-                        <span className={styles.ruleKey}>{s}</span>
-                        <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count}x</span>
-                          <span className={styles.ruleVal} style={d.pnl < 0 ? { color: 'var(--red)' } : {}}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span>
-                        </span>
-                      </div>
-                    )) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No trades logged yet.</p>}
+                    {Object.entries(setupBreakdown).length > 0 ? Object.entries(setupBreakdown).map(([s, d]) => <div key={s} className={styles.ruleItem}><span className={styles.ruleKey}>{s}</span><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count}x</span><span className={styles.ruleVal} style={d.pnl < 0 ? { color: 'var(--red)' } : {}}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span></span></div>) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No trades logged yet.</p>}
                   </div>
                 </div>
-
-                {/* AI Insights */}
-                {(dashAI || dashAILoading) && (
-                  <div style={{ marginTop: 4 }}>
-                    <div className={styles.sectionLabel}>AI Mentee Analysis</div>
-                    <div className={styles.aiOutput}>{dashAILoading ? 'Running mentee analysis...' : dashAI}</div>
-                  </div>
-                )}
+                {(dashAI || dashAILoading) && <div style={{ marginTop: 4 }}><div className={styles.sectionLabel}>AI Mentee Analysis</div><div className={styles.aiOutput}>{dashAILoading ? 'Running mentee analysis...' : dashAI}</div></div>}
               </>
             )}
           </div>

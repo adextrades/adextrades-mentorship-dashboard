@@ -7,8 +7,18 @@ export const DEFAULT_MENTEES = [
 ]
 
 export const EMPTY_PLAN: MenteePlan = {
+  // Goals
+  goalShortTerm: '',
+  goalLongTerm: '',
+  goalTimeline: '',
+  goalPortTarget: 0,
+  // Assets & Profile
+  accountSize: 0,
+  cashAvailable: 0,
+  sharesHeld: '',
   exp: 'Beginner (0–1 yr)',
   focus: 'Buying Options',
+  // Trade Rules
   portStart: 0,
   maxTrades: 2,
   maxSize: 500,
@@ -16,12 +26,15 @@ export const EMPTY_PLAN: MenteePlan = {
   target: 30,
   dte: 'No weekly expiration swings',
   approval: 'All trades',
+  // Milestones
   ci1: 200,
   ci2Trigger: 3000,
   ci2: 500,
   drawdown: 400,
+  // Approved/Restricted
   approved: [],
   restricted: [],
+  // Psychology
   psych: '',
   goals: ''
 }
@@ -62,7 +75,10 @@ export function getMentee(data: AppData, name: string): Mentee {
       updatedAt: new Date().toISOString()
     }
   }
-  return data.mentees[name]
+  // Migrate old plans that don't have new goal fields
+  const m = data.mentees[name]
+  m.plan = { ...EMPTY_PLAN, ...m.plan }
+  return m
 }
 
 export function saveMenteePlan(data: AppData, name: string, plan: MenteePlan): AppData {
