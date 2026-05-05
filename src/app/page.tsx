@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
-  deleteTrade, addMentee, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN
+  deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN
 } from '@/lib/storage'
-import { AppData, MenteePlan, Trade } from '@/lib/types'
+import { AppData, MenteePlan, Trade, SavedSession } from '@/lib/types'
 import styles from './dashboard.module.css'
 
 const TABS = ['Trade Plan', 'Session Intake', 'Trade Log', 'Dashboard']
@@ -17,11 +17,16 @@ export default function Dashboard() {
   const [activeMentee, setActiveMentee] = useState('')
   const [mounted, setMounted] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // Trade Plan state
   const [plan, setPlan] = useState<MenteePlan>({ ...EMPTY_PLAN })
+  const [planLocked, setPlanLocked] = useState(true)
   const [approvedInput, setApprovedInput] = useState('')
   const [restrictedInput, setRestrictedInput] = useState('')
   const [planAI, setPlanAI] = useState('')
   const [planAILoading, setPlanAILoading] = useState(false)
+
+  // Intake state
   const [intakeTrades, setIntakeTrades] = useState('')
   const [intakeFollowed, setIntakeFollowed] = useState('')
   const [intakeDeviation, setIntakeDeviation] = useState('')
@@ -34,6 +39,9 @@ export default function Dashboard() {
   const [intakeAI, setIntakeAI] = useState('')
   const [intakeAILoading, setIntakeAILoading] = useState(false)
   const [intakeFlags, setIntakeFlags] = useState<{ title: string; msg: string }[]>([])
+  const [sessionSaved, setSessionSaved] = useState(false)
+
+  // Trade log state
   const [showTradeForm, setShowTradeForm] = useState(false)
   const [tradeTicker, setTradeTicker] = useState('')
   const [tradeDir, setTradeDir] = useState('Call')
@@ -45,8 +53,15 @@ export default function Dashboard() {
   const [tradePlanFollow, setTradePlanFollow] = useState('Yes')
   const [tradeEmotion, setTradeEmotion] = useState('1')
   const [tradeNotes, setTradeNotes] = useState('')
+
+  // Dashboard AI
   const [dashAI, setDashAI] = useState('')
   const [dashAILoading, setDashAILoading] = useState(false)
+
+  // Session viewer modal
+  const [viewingSession, setViewingSession] = useState<SavedSession | null>(null)
+
+  // New mentee
   const [newMenteeName, setNewMenteeName] = useState('')
   const [showNewMentee, setShowNewMentee] = useState(false)
 
@@ -63,12 +78,23 @@ export default function Dashboard() {
 
   const menteeNames = mounted ? getAllMenteeNames(data) : DEFAULT_MENTEES
 
+  const clearIntakeForm = () => {
+    setIntakeTrades(''); setIntakeFollowed(''); setIntakeDeviation('')
+    setIntakePnl(''); setIntakeEmotion(0); setIntakeFocus('')
+    setIntakeWin(''); setIntakeMistake('')
+    setIntakeDate(new Date().toISOString().slice(0, 10))
+    setIntakeAI(''); setIntakeFlags([])
+    setSessionSaved(false)
+  }
+
   const handleSelectMentee = useCallback((name: string) => {
     setActiveMentee(name)
     if (!name) return
     const m = getMentee(data, name)
     setPlan({ ...EMPTY_PLAN, ...m.plan })
-    setDashAI(''); setPlanAI(''); setIntakeAI(''); setIntakeFlags([])
+    setPlanLocked(true)
+    setDashAI(''); setPlanAI('')
+    clearIntakeForm()
   }, [data])
 
   const handleSavePlan = async () => {
@@ -76,6 +102,7 @@ export default function Dashboard() {
     const updated = saveMenteePlan(data, activeMentee, plan)
     setData(updated)
     await persistData(updated)
+    setPlanLocked(true)
     alert('Plan saved for ' + activeMentee + '!')
   }
 
@@ -84,6 +111,7 @@ export default function Dashboard() {
     const updated = addMentee(data, newMenteeName.trim())
     setData(updated); persistData(updated)
     setActiveMentee(newMenteeName.trim()); setPlan({ ...EMPTY_PLAN })
+    setPlanLocked(false)
     setNewMenteeName(''); setShowNewMentee(false)
   }
 
@@ -95,10 +123,15 @@ export default function Dashboard() {
     const manualPnl = tradePnl ? parseFloat(tradePnl) : parseFloat(((exit - entry) * qty * 100).toFixed(2))
     let ticker = tradeTicker.toUpperCase()
     if (!ticker.startsWith('$')) ticker = '$' + ticker
-    const trade: Omit<Trade, 'id'> = { date: new Date().toISOString().slice(0, 10), ticker, dir: tradeDir, setup: tradeSetup, entry, exit, qty, pnl: manualPnl, plan: tradePlanFollow, emotion: parseInt(tradeEmotion), notes: tradeNotes }
+    const trade: Omit<Trade, 'id'> = {
+      date: new Date().toISOString().slice(0, 10), ticker, dir: tradeDir,
+      setup: tradeSetup, entry, exit, qty, pnl: manualPnl,
+      plan: tradePlanFollow, emotion: parseInt(tradeEmotion), notes: tradeNotes
+    }
     const updated = addTrade(data, activeMentee, trade)
     setData(updated); persistData(updated); setShowTradeForm(false)
-    setTradeTicker(''); setTradeEntry(''); setTradeExit(''); setTradeQty(''); setTradePnl(''); setTradeNotes('')
+    setTradeTicker(''); setTradeEntry(''); setTradeExit('')
+    setTradeQty(''); setTradePnl(''); setTradeNotes('')
   }
 
   const handleDeleteTrade = (tradeId: string) => {
@@ -106,6 +139,41 @@ export default function Dashboard() {
     if (!confirm('Delete this trade?')) return
     const updated = deleteTrade(data, activeMentee, tradeId)
     setData(updated); persistData(updated)
+  }
+
+  const handleSaveSession = async () => {
+    if (!activeMentee) { alert('Select a mentee first.'); return }
+    const session: Omit<SavedSession, 'id' | 'savedAt'> = {
+      date: intakeDate,
+      trades: intakeTrades, followed: intakeFollowed,
+      deviation: intakeDeviation, pnl: intakePnl,
+      emotion: intakeEmotion, focus: intakeFocus,
+      win: intakeWin, mistake: intakeMistake,
+      aiBrief: intakeAI,
+      flags: intakeFlags
+    }
+    const updated = saveSession(data, activeMentee, session)
+    setData(updated)
+    await persistData(updated)
+    setSessionSaved(true)
+    clearIntakeForm()
+    alert('Session saved! Form cleared and ready for next session.')
+  }
+
+  const handleLoadSession = (session: SavedSession) => {
+    setViewingSession(null)
+    setIntakeDate(session.date)
+    setIntakeTrades(session.trades)
+    setIntakeFollowed(session.followed)
+    setIntakeDeviation(session.deviation)
+    setIntakePnl(session.pnl)
+    setIntakeEmotion(session.emotion)
+    setIntakeFocus(session.focus)
+    setIntakeWin(session.win)
+    setIntakeMistake(session.mistake)
+    setIntakeAI(session.aiBrief)
+    setIntakeFlags(session.flags)
+    setActiveTab(1)
   }
 
   const callClaude = async (prompt: string): Promise<string> => {
@@ -120,7 +188,7 @@ export default function Dashboard() {
     if (!activeMentee) { alert('Select and save a plan first.'); return }
     setPlanAILoading(true); setPlanAI('')
     try {
-      const text = await callClaude('You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ' + activeMentee + '\n\nGOALS:\n- Short-term goal: ' + (plan.goalShortTerm || 'Not set') + '\n- Long-term goal: ' + (plan.goalLongTerm || 'Not set') + '\n- Portfolio target: $' + (plan.goalPortTarget || 0) + '\n- Timeline: ' + (plan.goalTimeline || 'Not set') + '\n\nASSETS:\n- Account size: $' + (plan.accountSize || 0) + '\n- Cash available: $' + (plan.cashAvailable || 0) + '\n- Shares held: ' + (plan.sharesHeld || 'None') + '\n- Experience: ' + plan.exp + '\n- Focus: ' + plan.focus + '\n\nTRADE RULES:\n- Starting portfolio: $' + plan.portStart + '\n- Max trades: ' + plan.maxTrades + '\n- Max size: $' + plan.maxSize + '\n- Stop loss: ' + plan.stopLoss + '%\n- Profit target: ' + plan.target + '%\n- DTE: ' + plan.dte + '\n- Approval: ' + plan.approval + '\n- Check-ins every $' + plan.ci1 + ' (escalates to $' + plan.ci2 + ' after $' + plan.ci2Trigger + ')\n- Approved: ' + (plan.approved?.join(', ') || 'None') + '\n- Restricted: ' + (plan.restricted?.join(', ') || 'None') + '\n\nPSYCHOLOGY: ' + (plan.psych || 'None noted') + '\n\nWrite 180-220 words. Start with their goals. Write TO the mentee in second person. Be direct. Reference TheStrat notation where applicable. End with what success looks like at their first milestone.')
+      const text = await callClaude('You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ' + activeMentee + '\n\nGOALS:\n- Short-term: ' + (plan.goalShortTerm || 'Not set') + '\n- Long-term: ' + (plan.goalLongTerm || 'Not set') + '\n- Portfolio target: $' + (plan.goalPortTarget || 0) + '\n- Timeline: ' + (plan.goalTimeline || 'Not set') + '\n\nASSETS:\n- Account: $' + (plan.accountSize || 0) + '\n- Cash: $' + (plan.cashAvailable || 0) + '\n- Holdings: ' + (plan.sharesHeld || 'None') + '\n- Experience: ' + plan.exp + '\n- Focus: ' + plan.focus + '\n\nRULES:\n- Starting port: $' + plan.portStart + '\n- Max trades: ' + plan.maxTrades + '\n- Max size: $' + plan.maxSize + '\n- Stop loss: ' + plan.stopLoss + '%\n- Target: ' + plan.target + '%\n- DTE: ' + plan.dte + '\n- Approval: ' + plan.approval + '\n- Approved: ' + (plan.approved?.join(', ') || 'None') + '\n- Restricted: ' + (plan.restricted?.join(', ') || 'None') + '\n\nPSYCHOLOGY: ' + (plan.psych || 'None noted') + '\n\nWrite 180-220 words. Start with their goals. Write TO the mentee in second person. Be direct. Reference TheStrat notation where applicable. End with what success looks like at their first milestone.')
       setPlanAI(text)
     } catch { setPlanAI('Error generating summary. Check API connection.') }
     setPlanAILoading(false)
@@ -131,7 +199,7 @@ export default function Dashboard() {
     setIntakeAILoading(true); setIntakeAI(''); setIntakeFlags([])
     const m = getMentee(data, activeMentee)
     try {
-      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee: ' + activeMentee + '\nShort-term goal: ' + (m.plan?.goalShortTerm || 'Not set') + '\nLong-term goal: ' + (m.plan?.goalLongTerm || 'Not set') + '\nSession date: ' + intakeDate + '\nTrades: ' + (intakeTrades || 'Not provided') + '\nFollowed plan: ' + (intakeFollowed || 'Not answered') + '\nDeviations: ' + (intakeDeviation || 'None') + '\nP&L: ' + (intakePnl || 'Not provided') + '\nEmotion score: ' + (intakeEmotion || 'Not selected') + '/5\nFocus: ' + (intakeFocus || 'Not provided') + '\nBiggest win: ' + (intakeWin || 'Not provided') + '\nBiggest mistake: ' + (intakeMistake || 'Not provided') + '\n\nWrite a 100-150 word pre-session brief for Adex. Reference goals when relevant. Highlight what went well, what to address, psychology patterns. Be direct and flag any concerns explicitly.')
+      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee: ' + activeMentee + '\nGoal: ' + (m.plan?.goalShortTerm || 'Not set') + '\nSession: ' + intakeDate + '\nTrades: ' + (intakeTrades || 'Not provided') + '\nFollowed plan: ' + (intakeFollowed || 'Not answered') + '\nDeviations: ' + (intakeDeviation || 'None') + '\nP&L: ' + (intakePnl || 'Not provided') + '\nEmotion: ' + (intakeEmotion || 'Not selected') + '/5\nFocus: ' + (intakeFocus || 'Not provided') + '\nBiggest win: ' + (intakeWin || 'Not provided') + '\nBiggest mistake: ' + (intakeMistake || 'Not provided') + '\n\nWrite a 100-150 word pre-session brief for Adex. Reference goals when relevant. Highlight what went well, what to address, psychology patterns. Be direct and flag any concerns explicitly.')
       setIntakeAI(text)
       const flags: { title: string; msg: string }[] = []
       if (intakeEmotion >= 4) flags.push({ title: 'High Emotional State', msg: 'Mentee reported emotion ' + intakeEmotion + '/5. Explore triggers and whether it led to revenge trades.' })
@@ -155,14 +223,16 @@ export default function Dashboard() {
       const pStart = p.portStart || 0; const pVal = pStart + totalPnl
       const gTarget = p.goalPortTarget || 0
       const gPct = gTarget > pStart ? Math.round(((pVal - pStart) / (gTarget - pStart)) * 100) : 0
-      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee progress analysis for: ' + activeMentee + '\n\nGOALS:\n- Short-term: ' + (p.goalShortTerm || 'Not set') + '\n- Long-term: ' + (p.goalLongTerm || 'Not set') + '\n- Target: $' + gTarget + '\n- Timeline: ' + (p.goalTimeline || 'Not set') + '\n- Goal progress: ' + gPct + '% (portfolio $' + Math.round(pVal) + ' vs target $' + gTarget + ')\n\nPERFORMANCE:\n- Trades: ' + tr.length + ', Wins: ' + wins + ', Losses: ' + (tr.length - wins) + '\n- P&L: $' + totalPnl.toFixed(0) + '\n- Deviations: ' + dev + '/' + tr.length + '\n- Avg emotion: ' + avgEm + '\n- Recent: ' + JSON.stringify(tr.slice(-6).map((t: Trade) => ({ ticker: t.ticker, pnl: t.pnl, plan: t.plan, emotion: t.emotion }))) + '\n\nPLAN: Focus: ' + p.focus + ', Max trades: ' + p.maxTrades + ', Psychology: ' + (p.psych || 'None') + '\n\nWrite 200-250 words. Lead with goal progress. Cover performance, discipline, psychology, recommendations. Write to Adex professionally.')
+      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee: ' + activeMentee + '\nGoals: ST: ' + (p.goalShortTerm || 'Not set') + ' | LT: ' + (p.goalLongTerm || 'Not set') + '\nTarget: $' + gTarget + ' | Progress: ' + gPct + '% | Portfolio: $' + Math.round(pVal) + '\nTrades: ' + tr.length + ', Wins: ' + wins + ', P&L: $' + totalPnl.toFixed(0) + ', Deviations: ' + dev + '/' + tr.length + ', Avg emotion: ' + avgEm + '\nRecent: ' + JSON.stringify(tr.slice(-6).map((t: Trade) => ({ ticker: t.ticker, pnl: t.pnl, plan: t.plan, emotion: t.emotion }))) + '\nPlan: ' + p.focus + ', Max trades: ' + p.maxTrades + ', Psychology: ' + (p.psych || 'None') + '\n\nWrite 200-250 words. Lead with goal progress. Cover performance, discipline, psychology, one specific recommendation. Write to Adex professionally.')
       setDashAI(text)
     } catch { setDashAI('Error. Check API connection.') }
     setDashAILoading(false)
   }
 
+  // Computed stats
   const currentMenteeData = activeMentee ? getMentee(data, activeMentee) : null
   const trades = currentMenteeData?.trades || []
+  const sessions = currentMenteeData?.sessions || []
   const portStart = currentMenteeData?.plan?.portStart || 0
   const goalTarget = currentMenteeData?.plan?.goalPortTarget || 0
   const goalTimeline = currentMenteeData?.plan?.goalTimeline || ''
@@ -187,7 +257,7 @@ export default function Dashboard() {
     trades.forEach(t => { if (t.pnl < 0) { cur++; maxC = Math.max(maxC, cur) } else cur = 0 })
     if (maxC >= 2) flags.push({ title: 'Consecutive Losses', msg: 'Max streak: ' + maxC + '. Check for size/frequency increases after losses.' })
     const opw = trades.filter(t => t.plan !== 'Yes' && t.pnl > 0)
-    if (opw.length) flags.push({ title: 'Off-Plan Wins', msg: opw.length + ' deviation(s) were profitable — reinforcing bad habits. Address directly.' })
+    if (opw.length) flags.push({ title: 'Off-Plan Wins', msg: opw.length + ' deviation(s) were profitable. Reinforcing bad habits — address directly.' })
     return flags
   }
 
@@ -208,10 +278,70 @@ export default function Dashboard() {
     return acc
   }, {} as Record<string, { count: number; pnl: number }>)
 
+  const formatDate = (dateStr: string) => {
+    try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+    catch { return dateStr }
+  }
+
   if (!mounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', letterSpacing: '4px', fontSize: '13px' }}>LOADING...</div>
+
+  const inputStyle = planLocked ? { opacity: 0.6, pointerEvents: 'none' as const } : {}
 
   return (
     <div className={styles.app}>
+      {/* Session Viewer Modal */}
+      {viewingSession && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, width: '100%', maxWidth: 680, maxHeight: '88vh', overflowY: 'auto', padding: 28 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 4 }}>Session Record</div>
+                <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>{formatDate(viewingSession.date)}</div>
+              </div>
+              <button onClick={() => setViewingSession(null)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: 4, fontFamily: 'Rajdhani, sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: '1px' }}>CLOSE</button>
+            </div>
+
+            {[
+              ['Trades Taken', viewingSession.trades],
+              ['Followed Plan?', viewingSession.followed],
+              ['Deviations', viewingSession.deviation],
+              ['P&L', viewingSession.pnl ? '$' + viewingSession.pnl : '—'],
+              ['Emotional State', viewingSession.emotion ? viewingSession.emotion + '/5' : '—'],
+              ['Focus for Session', viewingSession.focus],
+              ['Biggest Win / Insight', viewingSession.win],
+              ['Biggest Mistake', viewingSession.mistake],
+            ].map(([label, value]) => value && value !== '—' ? (
+              <div key={label} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{value}</div>
+              </div>
+            ) : null)}
+
+            {viewingSession.aiBrief && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 6 }}>AI Session Brief</div>
+                <div style={{ background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, padding: '12px 14px', fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{viewingSession.aiBrief}</div>
+              </div>
+            )}
+
+            {viewingSession.flags?.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: 6 }}>Flags</div>
+                {viewingSession.flags.map((f, i) => (
+                  <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
+              <button className={styles.btnGold} onClick={() => handleLoadSession(viewingSession)}>Load into Intake Form</button>
+              <button className={styles.btnGhost} onClick={() => setViewingSession(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <header className={styles.header}>
         <div className={styles.wordmark}>ADEX<span>TRADES</span></div>
         <div className={styles.headerRight}>
@@ -220,9 +350,11 @@ export default function Dashboard() {
           <div className={styles.headerMeta}>Platinum Mentorship</div>
         </div>
       </header>
+
       <nav className={styles.tabs}>
         {TABS.map((tab, i) => <button key={tab} className={styles.tab + (activeTab === i ? ' ' + styles.tabActive : '')} onClick={() => setActiveTab(i)}>{tab}</button>)}
       </nav>
+
       <main className={styles.main}>
 
         {/* ═══ TAB 0: TRADE PLAN ═══ */}
@@ -237,8 +369,30 @@ export default function Dashboard() {
                   <option value="__new__">+ Add new mentee...</option>
                 </select>
               </div>
-              <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                {planLocked ? (
+                  <button className={styles.btnOutline} onClick={() => setPlanLocked(false)}>Edit Plan</button>
+                ) : (
+                  <>
+                    <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
+                    <button className={styles.btnGhost} onClick={() => { setPlanLocked(true); if (activeMentee) { const m = getMentee(data, activeMentee); setPlan({ ...EMPTY_PLAN, ...m.plan }) } }}>Cancel</button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Plan status bar */}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, padding: '8px 12px', background: 'var(--bg3)', borderRadius: 4, fontSize: 11 }}>
+              {planLocked ? (
+                <span style={{ color: 'var(--green)' }}>● Plan locked — view only</span>
+              ) : (
+                <span style={{ color: 'var(--gold)' }}>● Editing mode — changes not saved until you click Save Plan</span>
+              )}
+              {plan.planUpdatedAt && (
+                <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>Last updated: {formatDate(plan.planUpdatedAt)}</span>
+              )}
+            </div>
+
             {showNewMentee && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
                 <div className={styles.formGrid}>
@@ -248,66 +402,73 @@ export default function Dashboard() {
               </div>
             )}
 
-            <div className={styles.sectionLabel}>Section 1 — Goals &amp; Vision</div>
-            <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>Start here. The entire plan is built backward from these goals.</div>
-            <div className={styles.formGrid}>
-              <div className={styles.field}><label className={styles.label}>Short-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalShortTerm} onChange={e => setPlan(p => ({ ...p, goalShortTerm: e.target.value }))} placeholder="e.g. Turn $5K into $10K in 6 months buying options on TheStrat setups" /></div>
-              <div className={styles.field}><label className={styles.label}>Long-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalLongTerm} onChange={e => setPlan(p => ({ ...p, goalLongTerm: e.target.value }))} placeholder="e.g. Build a $50K portfolio generating consistent monthly income within 3 years" /></div>
-              <div className={styles.field}><label className={styles.label}>Portfolio Target ($)</label><input className={styles.input} type="number" value={plan.goalPortTarget || ''} onChange={e => setPlan(p => ({ ...p, goalPortTarget: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 10000" /></div>
-              <div className={styles.field}><label className={styles.label}>Target Timeline</label><input className={styles.input} value={plan.goalTimeline} onChange={e => setPlan(p => ({ ...p, goalTimeline: e.target.value }))} placeholder="e.g. 6 months, by end of 2025" /></div>
-            </div>
-
-            <div className={styles.sectionLabel}>Section 2 — Assets &amp; Profile</div>
-            <div className={styles.formGrid3}>
-              <div className={styles.field}><label className={styles.label}>Total Account Size ($)</label><input className={styles.input} type="number" value={plan.accountSize || ''} onChange={e => setPlan(p => ({ ...p, accountSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 8000" /></div>
-              <div className={styles.field}><label className={styles.label}>Cash Available to Trade ($)</label><input className={styles.input} type="number" value={plan.cashAvailable || ''} onChange={e => setPlan(p => ({ ...p, cashAvailable: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 5000" /></div>
-              <div className={styles.field}><label className={styles.label}>Trading Experience</label><select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}><option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option></select></div>
-              <div className={styles.field} style={{ gridColumn: '1 / -1' }}><label className={styles.label}>Shares / Assets Currently Held</label><input className={styles.input} value={plan.sharesHeld} onChange={e => setPlan(p => ({ ...p, sharesHeld: e.target.value }))} placeholder="e.g. 50 shares $AAPL, 100 shares $MSFT, $2K in SCHD" /></div>
-              <div className={styles.field}><label className={styles.label}>Primary Focus</label><select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}><option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option></select></div>
-              <div className={styles.field}><label className={styles.label}>Starting Portfolio Size ($)</label><input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" /></div>
-            </div>
-
-            <div className={styles.sectionLabel}>Section 3 — Trade Rules</div>
-            <div className={styles.formGrid3}>
-              <div className={styles.field}><label className={styles.label}>Max Active Trades</label><input className={styles.input} type="number" value={plan.maxTrades || ''} onChange={e => setPlan(p => ({ ...p, maxTrades: parseInt(e.target.value) || 0 }))} placeholder="e.g. 2" /></div>
-              <div className={styles.field}><label className={styles.label}>Max Size Per Trade ($)</label><input className={styles.input} type="number" value={plan.maxSize || ''} onChange={e => setPlan(p => ({ ...p, maxSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 500" /></div>
-              <div className={styles.field}><label className={styles.label}>Hard Stop Loss (%)</label><input className={styles.input} type="number" value={plan.stopLoss || ''} onChange={e => setPlan(p => ({ ...p, stopLoss: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 40" /></div>
-              <div className={styles.field}><label className={styles.label}>Profit Target (%)</label><input className={styles.input} type="number" value={plan.target || ''} onChange={e => setPlan(p => ({ ...p, target: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 30" /></div>
-              <div className={styles.field}><label className={styles.label}>DTE Rule</label><select className={styles.select} value={plan.dte} onChange={e => setPlan(p => ({ ...p, dte: e.target.value }))}><option>No weekly expiration swings</option><option>Min 14 DTE</option><option>Min 21 DTE</option><option>Min 30 DTE</option><option>No DTE restriction</option></select></div>
-              <div className={styles.field}><label className={styles.label}>Requires Adex Approval</label><select className={styles.select} value={plan.approval} onChange={e => setPlan(p => ({ ...p, approval: e.target.value }))}><option>All trades</option><option>Trades over $300</option><option>Trades over $500</option><option>New tickers only</option><option>None — full discretion</option></select></div>
-            </div>
-
-            <div className={styles.sectionLabel}>Section 4 — Milestone Check-ins</div>
-            <div className={styles.formGrid}>
-              <div className={styles.field}><label className={styles.label}>First Check-in Increment ($)</label><input className={styles.input} type="number" value={plan.ci1 || ''} onChange={e => setPlan(p => ({ ...p, ci1: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 200" /></div>
-              <div className={styles.field}><label className={styles.label}>Escalate Check-in At ($)</label><input className={styles.input} type="number" value={plan.ci2Trigger || ''} onChange={e => setPlan(p => ({ ...p, ci2Trigger: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 3000" /></div>
-              <div className={styles.field}><label className={styles.label}>Escalated Increment ($)</label><input className={styles.input} type="number" value={plan.ci2 || ''} onChange={e => setPlan(p => ({ ...p, ci2: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 500" /></div>
-              <div className={styles.field}><label className={styles.label}>Max Loss Before Review ($)</label><input className={styles.input} type="number" value={plan.drawdown || ''} onChange={e => setPlan(p => ({ ...p, drawdown: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 400" /></div>
-            </div>
-
-            <div className={styles.sectionLabel}>Section 5 — Approved &amp; Restricted</div>
-            <div className={styles.formGrid}>
-              <div className={styles.field}>
-                <label className={styles.label}>Approved Tickers / Setups</label>
-                <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={approvedInput} onChange={e => setApprovedInput(e.target.value)} placeholder="$AAPL, 2D setups..." onKeyDown={e => { if (e.key === 'Enter' && approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }}>Add</button></div>
-                <div className={styles.tagWrap}>{plan.approved.map((t, i) => <span key={i} className={styles.tag}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, approved: p.approved.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
+            <div style={inputStyle}>
+              <div className={styles.sectionLabel}>Section 1 — Goals &amp; Vision</div>
+              <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>Start here. The entire plan is built backward from these goals.</div>
+              <div className={styles.formGrid}>
+                <div className={styles.field}><label className={styles.label}>Short-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalShortTerm} onChange={e => setPlan(p => ({ ...p, goalShortTerm: e.target.value }))} placeholder="e.g. Turn $5K into $10K in 6 months buying options on TheStrat setups" /></div>
+                <div className={styles.field}><label className={styles.label}>Long-Term Goal</label><textarea className={styles.textarea} style={{ minHeight: 68 }} value={plan.goalLongTerm} onChange={e => setPlan(p => ({ ...p, goalLongTerm: e.target.value }))} placeholder="e.g. Build a $50K portfolio generating consistent monthly income within 3 years" /></div>
+                <div className={styles.field}><label className={styles.label}>Portfolio Target ($)</label><input className={styles.input} type="number" value={plan.goalPortTarget || ''} onChange={e => setPlan(p => ({ ...p, goalPortTarget: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 10000" /></div>
+                <div className={styles.field}><label className={styles.label}>Target Timeline</label><input className={styles.input} value={plan.goalTimeline} onChange={e => setPlan(p => ({ ...p, goalTimeline: e.target.value }))} placeholder="e.g. 6 months, by end of 2025" /></div>
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Restricted / Off-Limits</label>
-                <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={restrictedInput} onChange={e => setRestrictedInput(e.target.value)} placeholder="Penny stocks, 0DTE..." onKeyDown={e => { if (e.key === 'Enter' && restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }}>Add</button></div>
-                <div className={styles.tagWrap}>{plan.restricted.map((t, i) => <span key={i} className={styles.tag + ' ' + styles.tagRed}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, restricted: p.restricted.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
+
+              <div className={styles.sectionLabel}>Section 2 — Assets &amp; Profile</div>
+              <div className={styles.formGrid3}>
+                <div className={styles.field}><label className={styles.label}>Total Account Size ($)</label><input className={styles.input} type="number" value={plan.accountSize || ''} onChange={e => setPlan(p => ({ ...p, accountSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 8000" /></div>
+                <div className={styles.field}><label className={styles.label}>Cash Available ($)</label><input className={styles.input} type="number" value={plan.cashAvailable || ''} onChange={e => setPlan(p => ({ ...p, cashAvailable: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 5000" /></div>
+                <div className={styles.field}><label className={styles.label}>Trading Experience</label><select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}><option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option></select></div>
+                <div className={styles.field} style={{ gridColumn: '1 / -1' }}><label className={styles.label}>Shares / Assets Currently Held</label><input className={styles.input} value={plan.sharesHeld} onChange={e => setPlan(p => ({ ...p, sharesHeld: e.target.value }))} placeholder="e.g. 50 shares $AAPL, 100 shares $MSFT, $2K in SCHD" /></div>
+                <div className={styles.field}><label className={styles.label}>Primary Focus</label><select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}><option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option></select></div>
+                <div className={styles.field}><label className={styles.label}>Starting Portfolio Size ($)</label><input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" /></div>
               </div>
+
+              <div className={styles.sectionLabel}>Section 3 — Trade Rules</div>
+              <div className={styles.formGrid3}>
+                <div className={styles.field}><label className={styles.label}>Max Active Trades</label><input className={styles.input} type="number" value={plan.maxTrades || ''} onChange={e => setPlan(p => ({ ...p, maxTrades: parseInt(e.target.value) || 0 }))} placeholder="e.g. 2" /></div>
+                <div className={styles.field}><label className={styles.label}>Max Size Per Trade ($)</label><input className={styles.input} type="number" value={plan.maxSize || ''} onChange={e => setPlan(p => ({ ...p, maxSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 500" /></div>
+                <div className={styles.field}><label className={styles.label}>Hard Stop Loss (%)</label><input className={styles.input} type="number" value={plan.stopLoss || ''} onChange={e => setPlan(p => ({ ...p, stopLoss: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 40" /></div>
+                <div className={styles.field}><label className={styles.label}>Profit Target (%)</label><input className={styles.input} type="number" value={plan.target || ''} onChange={e => setPlan(p => ({ ...p, target: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 30" /></div>
+                <div className={styles.field}><label className={styles.label}>DTE Rule</label><select className={styles.select} value={plan.dte} onChange={e => setPlan(p => ({ ...p, dte: e.target.value }))}><option>No weekly expiration swings</option><option>Min 14 DTE</option><option>Min 21 DTE</option><option>Min 30 DTE</option><option>No DTE restriction</option></select></div>
+                <div className={styles.field}><label className={styles.label}>Requires Adex Approval</label><select className={styles.select} value={plan.approval} onChange={e => setPlan(p => ({ ...p, approval: e.target.value }))}><option>All trades</option><option>Trades over $300</option><option>Trades over $500</option><option>New tickers only</option><option>None — full discretion</option></select></div>
+              </div>
+
+              <div className={styles.sectionLabel}>Section 4 — Milestone Check-ins</div>
+              <div className={styles.formGrid}>
+                <div className={styles.field}><label className={styles.label}>First Check-in Increment ($)</label><input className={styles.input} type="number" value={plan.ci1 || ''} onChange={e => setPlan(p => ({ ...p, ci1: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 200" /></div>
+                <div className={styles.field}><label className={styles.label}>Escalate Check-in At ($)</label><input className={styles.input} type="number" value={plan.ci2Trigger || ''} onChange={e => setPlan(p => ({ ...p, ci2Trigger: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 3000" /></div>
+                <div className={styles.field}><label className={styles.label}>Escalated Increment ($)</label><input className={styles.input} type="number" value={plan.ci2 || ''} onChange={e => setPlan(p => ({ ...p, ci2: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 500" /></div>
+                <div className={styles.field}><label className={styles.label}>Max Loss Before Review ($)</label><input className={styles.input} type="number" value={plan.drawdown || ''} onChange={e => setPlan(p => ({ ...p, drawdown: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 400" /></div>
+              </div>
+
+              <div className={styles.sectionLabel}>Section 5 — Approved &amp; Restricted</div>
+              <div className={styles.formGrid}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Approved Tickers / Setups</label>
+                  <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={approvedInput} onChange={e => setApprovedInput(e.target.value)} placeholder="$AAPL, 2D setups..." onKeyDown={e => { if (e.key === 'Enter' && approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (approvedInput.trim()) { setPlan(p => ({ ...p, approved: [...p.approved, approvedInput.trim()] })); setApprovedInput('') } }}>Add</button></div>
+                  <div className={styles.tagWrap}>{plan.approved.map((t, i) => <span key={i} className={styles.tag}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, approved: p.approved.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Restricted / Off-Limits</label>
+                  <div style={{ display: 'flex', gap: 8 }}><input className={styles.input} value={restrictedInput} onChange={e => setRestrictedInput(e.target.value)} placeholder="Penny stocks, 0DTE..." onKeyDown={e => { if (e.key === 'Enter' && restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }} /><button className={styles.smallBtn} onClick={() => { if (restrictedInput.trim()) { setPlan(p => ({ ...p, restricted: [...p.restricted, restrictedInput.trim()] })); setRestrictedInput('') } }}>Add</button></div>
+                  <div className={styles.tagWrap}>{plan.restricted.map((t, i) => <span key={i} className={styles.tag + ' ' + styles.tagRed}>{t} <span style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }} onClick={() => setPlan(p => ({ ...p, restricted: p.restricted.filter((_, j) => j !== i) }))}>x</span></span>)}</div>
+                </div>
+              </div>
+
+              <div className={styles.sectionLabel}>Section 6 — Psychology Notes</div>
+              <div className={styles.field} style={{ marginBottom: 16 }}><label className={styles.label}>Known Behavior Patterns / Flags</label><textarea className={styles.textarea} value={plan.psych} onChange={e => setPlan(p => ({ ...p, psych: e.target.value }))} placeholder="e.g. Tends to over-trade after a loss. Needs explicit rules or will press buttons in gray areas..." /></div>
+              <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>Additional Coaching Notes</label><textarea className={styles.textarea} value={plan.goals} onChange={e => setPlan(p => ({ ...p, goals: e.target.value }))} placeholder="What are you specifically focused on developing in this mentee this month?" /></div>
             </div>
 
-            <div className={styles.sectionLabel}>Section 6 — Psychology Notes</div>
-            <div className={styles.field} style={{ marginBottom: 16 }}><label className={styles.label}>Known Behavior Patterns / Flags</label><textarea className={styles.textarea} value={plan.psych} onChange={e => setPlan(p => ({ ...p, psych: e.target.value }))} placeholder="e.g. Tends to over-trade after a loss. Needs explicit rules or will press buttons in gray areas..." /></div>
-            <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>Additional Coaching Notes</label><textarea className={styles.textarea} value={plan.goals} onChange={e => setPlan(p => ({ ...p, goals: e.target.value }))} placeholder="What are you specifically focused on developing in this mentee this month?" /></div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
-              <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
-            </div>
-            {(planAI || planAILoading) && <div style={{ marginTop: 20 }}><div className={styles.sectionLabel}>AI-Generated Plan Summary</div><div className={styles.aiOutput}>{planAILoading ? 'Generating plan summary...' : planAI}</div></div>}
+            {!planLocked && (
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
+                <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
+              </div>
+            )}
+            {planLocked && activeMentee && (
+              <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading} style={{ marginTop: 8 }}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
+            )}
+            {(planAI || planAILoading) && <div style={{ marginTop: 20 }}><div className={styles.sectionLabel}>AI-Generated Plan Summary</div><div className={styles.aiOutput}>{planAILoading ? 'Generating...' : planAI}</div></div>}
           </div>
         )}
 
@@ -318,11 +479,13 @@ export default function Dashboard() {
               <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
               <div className={styles.field}><label className={styles.label}>Session Date</label><input className={styles.input} type="date" value={intakeDate} onChange={e => setIntakeDate(e.target.value)} style={{ width: 160 }} /></div>
             </div>
+
             {activeMentee && currentMenteeData?.plan?.goalShortTerm && (
               <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>
                 <span style={{ color: 'var(--gold)', fontWeight: 600 }}>Goal: </span>{currentMenteeData.plan.goalShortTerm}{currentMenteeData.plan.goalTimeline && <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>— {currentMenteeData.plan.goalTimeline}</span>}
               </div>
             )}
+
             <div className={styles.twoCol}>
               <div>
                 <div className={styles.sectionLabel}>Pre-Session Form</div>
@@ -337,12 +500,39 @@ export default function Dashboard() {
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>6. What do you want to cover this session?</label><textarea className={styles.textarea} value={intakeFocus} onChange={e => setIntakeFocus(e.target.value)} placeholder="Specific setups, concepts, trades to review..." /></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>7. Biggest win / insight this week</label><textarea className={styles.textarea} value={intakeWin} onChange={e => setIntakeWin(e.target.value)} placeholder="What clicked? What went right?" /></div>
                 <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>8. Biggest mistake / what you would do differently</label><textarea className={styles.textarea} value={intakeMistake} onChange={e => setIntakeMistake(e.target.value)} placeholder="Be honest. No judgment here." /></div>
-                <button className={styles.btnGold} onClick={handleAnalyzeIntake} disabled={intakeAILoading}>{intakeAILoading ? 'Analyzing...' : 'Analyze with AI'}</button>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button className={styles.btnGold} onClick={handleAnalyzeIntake} disabled={intakeAILoading}>{intakeAILoading ? 'Analyzing...' : 'Analyze with AI'}</button>
+                  <button className={styles.btnOutline} onClick={handleSaveSession} disabled={!activeMentee}>Save Session</button>
+                  <button className={styles.btnGhost} onClick={clearIntakeForm}>Clear Form</button>
+                </div>
+                {sessionSaved && <div style={{ marginTop: 10, fontSize: 12, color: 'var(--green)' }}>Session saved successfully.</div>}
               </div>
               <div>
                 <div className={styles.sectionLabel}>AI Session Brief</div>
                 {intakeAI ? <div className={styles.aiOutput}>{intakeAI}</div> : <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fill out the form and click Analyze with AI to generate a pre-session brief.</p>}
-                {intakeFlags.length > 0 && <><div className={styles.divider} /><div className={styles.sectionLabel}>Pattern Flags</div>{intakeFlags.map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>)}</>}
+                {intakeFlags.length > 0 && (
+                  <>
+                    <div className={styles.divider} />
+                    <div className={styles.sectionLabel}>Pattern Flags</div>
+                    {intakeFlags.map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>)}
+                  </>
+                )}
+                {activeMentee && sessions.length > 0 && (
+                  <>
+                    <div className={styles.divider} />
+                    <div className={styles.sectionLabel}>Past Sessions ({sessions.length})</div>
+                    {[...sessions].reverse().map(s => (
+                      <div key={s.id} onClick={() => setViewingSession(s)} style={{ padding: '8px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatDate(s.date)}</span>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', letterSpacing: '1px' }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
+                          {s.pnl && <span style={{ color: parseFloat(s.pnl) >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{parseFloat(s.pnl) >= 0 ? '+' : ''}${s.pnl}</span>}
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>→</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -383,8 +573,7 @@ export default function Dashboard() {
                     <tr key={t.id}>
                       <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
                       <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
-                      <td>{t.dir}</td>
-                      <td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
+                      <td>{t.dir}</td><td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
                       <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
                       <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Deviated'}</span></td>
                       <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
@@ -467,14 +656,41 @@ export default function Dashboard() {
                       {currentMenteeData.plan.restricted?.length > 0 && <div style={{ marginTop: 10 }}><div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>Off-Limits</div>{currentMenteeData.plan.restricted.map((r, i) => <span key={i} className={styles.tag + ' ' + styles.tagRed}>{r}</span>)}</div>}
                     </> : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No plan saved. Fill out the Trade Plan tab.</p>}
                   </div>
+
                   <div>
                     <div className={styles.sectionLabel}>Psychology Flags</div>
                     {getFlags().length > 0 ? getFlags().map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags detected. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
+
                     <div className={styles.divider} />
+
                     <div className={styles.sectionLabel}>Setup Breakdown</div>
                     {Object.entries(setupBreakdown).length > 0 ? Object.entries(setupBreakdown).map(([s, d]) => <div key={s} className={styles.ruleItem}><span className={styles.ruleKey}>{s}</span><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count}x</span><span className={styles.ruleVal} style={d.pnl < 0 ? { color: 'var(--red)' } : {}}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span></span></div>) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No trades logged yet.</p>}
+
+                    {/* Previous Sessions */}
+                    {sessions.length > 0 && (
+                      <>
+                        <div className={styles.divider} />
+                        <div className={styles.sectionLabel}>Previous Sessions ({sessions.length})</div>
+                        {[...sessions].reverse().map(s => (
+                          <div key={s.id} onClick={() => setViewingSession(s)} style={{ padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                            onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--gold-dim)')}
+                            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                              <span style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--gold)' }}>{formatDate(s.date)}</span>
+                              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                                {s.pnl && <span style={{ fontSize: 11, color: parseFloat(s.pnl) >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{parseFloat(s.pnl) >= 0 ? '+' : ''}${s.pnl}</span>}
+                                {s.emotion > 0 && <span style={{ fontSize: 10, color: s.emotion <= 2 ? 'var(--green)' : s.emotion >= 4 ? 'var(--red)' : 'var(--gold)' }}>E:{s.emotion}/5</span>}
+                                {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', letterSpacing: '1px', fontWeight: 600 }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
+                              </div>
+                            </div>
+                            {s.followed && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Plan: {s.followed}</div>}
+                          </div>
+                        ))}
+                      </>
+                    )}
                   </div>
                 </div>
+
                 {(dashAI || dashAILoading) && <div style={{ marginTop: 4 }}><div className={styles.sectionLabel}>AI Mentee Analysis</div><div className={styles.aiOutput}>{dashAILoading ? 'Running mentee analysis...' : dashAI}</div></div>}
               </>
             )}

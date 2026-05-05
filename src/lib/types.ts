@@ -13,6 +13,29 @@ export interface Trade {
   notes: string
 }
 
+export interface SessionFlag {
+  title: string
+  msg: string
+}
+
+export interface SavedSession {
+  id: string
+  date: string
+  savedAt: string
+  // Intake answers
+  trades: string
+  followed: string
+  deviation: string
+  pnl: string
+  emotion: number
+  focus: string
+  win: string
+  mistake: string
+  // AI outputs
+  aiBrief: string
+  flags: SessionFlag[]
+}
+
 export interface MenteePlan {
   // Section 1 — Goals & Vision
   goalShortTerm: string
@@ -44,12 +67,15 @@ export interface MenteePlan {
   // Section 6 — Psychology
   psych: string
   goals: string
+  // Meta
+  planUpdatedAt: string
 }
 
 export interface Mentee {
   name: string
   plan: MenteePlan
   trades: Trade[]
+  sessions: SavedSession[]
   updatedAt: string
 }
 
