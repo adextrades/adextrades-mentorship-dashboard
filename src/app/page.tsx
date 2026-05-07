@@ -342,7 +342,7 @@ export default function Dashboard() {
         />
       )}
 
-      {/* ── Session Viewer Modal ── */}}
+      {/* ── Session Viewer Modal ── */}
       {viewingSession && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
