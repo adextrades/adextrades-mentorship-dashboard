@@ -1,18 +1,23 @@
+export type TradeStatus = 'OPEN' | 'WIN' | 'LOSS'
+
 export interface Trade {
   id: string
   date: string
+  closeDate: string
   account: string
   ticker: string
   dir: string
-  setups: string[]        // multi-select setup combinations
+  setups: string[]
   entry: number
   exit: number
   qty: number
   pnl: number
+  roi: number
+  status: TradeStatus
   plan: string
   emotion: number
   notes: string
-  screenshots: string[]   // cloudinary URLs
+  screenshots: string[]
 }
 
 export interface SessionFlag {
@@ -85,14 +90,8 @@ export interface AppData {
 }
 
 export const ACCOUNT_TYPES = [
-  'Main - Buying',
-  'Main - Selling',
-  'IRA',
-  'Roth IRA',
-  '401k',
-  'Cash Account',
-  'Margin',
-  'Paper Trading',
+  'Main - Buying', 'Main - Selling', 'IRA', 'Roth IRA',
+  '401k', 'Cash Account', 'Margin', 'Paper Trading',
 ]
 
 export const EMOTIONS_LIST = [

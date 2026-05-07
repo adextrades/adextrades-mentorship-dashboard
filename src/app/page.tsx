@@ -3,13 +3,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
-  deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN,
+  updateTrade, deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN,
   getSetupCombinationStats
 } from '@/lib/storage'
-import { AppData, MenteePlan, Trade, SavedSession, TradingAccount, ACCOUNT_TYPES } from '@/lib/types'
+import { AppData, MenteePlan, Trade, TradeStatus, SavedSession, TradingAccount, ACCOUNT_TYPES } from '@/lib/types'
 import styles from './dashboard.module.css'
 import SetupSelector from '@/components/SetupSelector'
 import ScreenshotUploader from '@/components/ScreenshotUploader'
+import TradeModal from '@/components/TradeModal'
 
 const TABS = ['Trade Plan', 'Session Intake', 'Trade Log', 'Dashboard']
 
@@ -52,6 +53,8 @@ export default function Dashboard() {
 
   // Trade Log
   const [showTradeForm, setShowTradeForm] = useState(false)
+  const [tradeStatus, setTradeStatus] = useState<TradeStatus>('OPEN')
+  const [tradeCloseDate, setTradeCloseDate] = useState('')
   const [tradeAccount, setTradeAccount] = useState('')
   const [tradeTicker, setTradeTicker] = useState('')
   const [tradeDir, setTradeDir] = useState('Call')
@@ -69,6 +72,7 @@ export default function Dashboard() {
   const [dashAI, setDashAI] = useState('')
   const [dashAILoading, setDashAILoading] = useState(false)
   const [viewingSession, setViewingSession] = useState<SavedSession | null>(null)
+  const [viewingTrade, setViewingTrade] = useState<Trade | null>(null)
   const [newMenteeName, setNewMenteeName] = useState('')
   const [showNewMentee, setShowNewMentee] = useState(false)
 
@@ -152,10 +156,16 @@ export default function Dashboard() {
     const manualPnl = tradePnl ? parseFloat(tradePnl) : parseFloat(((exit - entry) * qty * 100).toFixed(2))
     let ticker = tradeTicker.toUpperCase()
     if (!ticker.startsWith('$')) ticker = '$' + ticker
+    const cost = entry * qty * 100
+    const roi = cost > 0 && exit ? parseFloat(((manualPnl / cost) * 100).toFixed(1)) : 0
+    const autoStatus: TradeStatus = !exit ? 'OPEN' : manualPnl >= 0 ? 'WIN' : 'LOSS'
     const trade: Omit<Trade, 'id'> = {
       date: new Date().toISOString().slice(0, 10),
+      closeDate: tradeCloseDate,
       account: tradeAccount, ticker, dir: tradeDir, setups: tradeSetups,
-      entry, exit, qty, pnl: manualPnl, plan: tradePlanFollow,
+      entry, exit, qty, pnl: manualPnl, roi,
+      status: tradeStatus === 'OPEN' ? autoStatus : tradeStatus,
+      plan: tradePlanFollow,
       emotion: parseInt(tradeEmotion), notes: tradeNotes,
       screenshots: tradeScreenshots
     }
@@ -164,6 +174,7 @@ export default function Dashboard() {
     setTradeTicker(''); setTradeEntry(''); setTradeExit('')
     setTradeQty(''); setTradePnl(''); setTradeNotes('')
     setTradeSetups([]); setTradeScreenshots([])
+    setTradeCloseDate(''); setTradeStatus('OPEN')
   }
 
   const handleDeleteTrade = (tradeId: string) => {
@@ -171,6 +182,17 @@ export default function Dashboard() {
     if (!confirm('Delete this trade?')) return
     const updated = deleteTrade(data, activeMentee, tradeId)
     setData(updated); persistData(updated)
+    setViewingTrade(null)
+  }
+
+  const handleUpdateTrade = (tradeId: string, updates: Partial<Trade>) => {
+    if (!activeMentee) return
+    const updated = updateTrade(data, activeMentee, tradeId, updates)
+    setData(updated); persistData(updated)
+    // refresh viewingTrade with updated data
+    const mentee = getMentee(updated, activeMentee)
+    const refreshed = mentee.trades.find(t => t.id === tradeId)
+    if (refreshed) setViewingTrade(refreshed)
   }
 
   const handleSaveSession = async () => {
@@ -310,7 +332,17 @@ export default function Dashboard() {
   return (
     <div className={styles.app}>
 
-      {/* ── Session Viewer Modal ── */}
+      {/* ── Trade Viewer Modal ── */}
+      {viewingTrade && (
+        <TradeModal
+          trade={viewingTrade}
+          onClose={() => setViewingTrade(null)}
+          onSave={(updates) => handleUpdateTrade(viewingTrade.id, updates)}
+          onDelete={() => handleDeleteTrade(viewingTrade.id)}
+        />
+      )}
+
+      {/* ── Session Viewer Modal ── */}}
       {viewingSession && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
@@ -649,6 +681,16 @@ export default function Dashboard() {
                 <div className={styles.formGrid3}>
                   <div className={styles.field}><label className={styles.label}>Ticker</label><input className={styles.input} value={tradeTicker} onChange={e => setTradeTicker(e.target.value.toUpperCase())} placeholder="$LOW" /></div>
                   <div className={styles.field}><label className={styles.label}>Direction</label><select className={styles.select} value={tradeDir} onChange={e => setTradeDir(e.target.value)}><option>Call</option><option>Put</option><option>Stock Long</option><option>Stock Short</option></select></div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Status</label>
+                    <select className={styles.select} value={tradeStatus} onChange={e => setTradeStatus(e.target.value as TradeStatus)}>
+                      <option value="OPEN">OPEN</option>
+                      <option value="WIN">WIN</option>
+                      <option value="LOSS">LOSS</option>
+                    </select>
+                  </div>
+                  <div className={styles.field}><label className={styles.label}>Open Date</label><input className={styles.input} type="date" value={new Date().toISOString().slice(0,10)} readOnly style={{ opacity: 0.6 }} /></div>
+                  <div className={styles.field}><label className={styles.label}>Close Date (if closed)</label><input className={styles.input} type="date" value={tradeCloseDate} onChange={e => setTradeCloseDate(e.target.value)} /></div>
                   <div className={styles.field}><label className={styles.label}>Setup</label><SetupSelector selected={tradeSetups} onChange={setTradeSetups} /></div>
                   <div className={styles.field}><label className={styles.label}>Entry Price ($)</label><input className={styles.input} type="number" value={tradeEntry} onChange={e => setTradeEntry(e.target.value)} placeholder="1.45" step="0.01" /></div>
                   <div className={styles.field}><label className={styles.label}>Exit Price ($)</label><input className={styles.input} type="number" value={tradeExit} onChange={e => setTradeExit(e.target.value)} placeholder="2.10" step="0.01" /></div>
@@ -669,34 +711,44 @@ export default function Dashboard() {
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead><tr>
-                  <th style={{ width: 85 }}>Date</th>
-                  <th style={{ width: 110 }}>Account</th>
-                  <th style={{ width: 75 }}>Ticker</th>
-                  <th style={{ width: 80 }}>Dir</th>
-                  <th style={{ width: 95 }}>Setup</th>
-                  <th style={{ width: 75 }}>P&amp;L</th>
-                  <th style={{ width: 75 }}>Plan</th>
-                  <th style={{ width: 65 }}>Emotion</th>
+                  <th style={{ width: 85 }}>Open Date</th>
+                  <th style={{ width: 85 }}>Close Date</th>
+                  <th style={{ width: 75 }}>Status</th>
+                  <th style={{ width: 100 }}>Account</th>
+                  <th style={{ width: 70 }}>Ticker</th>
+                  <th style={{ width: 60 }}>Dir</th>
+                  <th style={{ width: 60 }}>Entry</th>
+                  <th style={{ width: 60 }}>Exit</th>
+                  <th style={{ width: 65 }}>P&amp;L</th>
+                  <th style={{ width: 55 }}>ROI</th>
+                  <th style={{ width: 65 }}>Plan</th>
+                  <th>Setup</th>
                   <th>Notes</th>
-                  <th style={{ width: 28 }}></th>
                 </tr></thead>
                 <tbody>
                   {trades.length === 0
-                    ? <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
-                    : [...trades].reverse().map(t => (
-                      <tr key={t.id}>
-                        <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
-                        <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.account || '—'}</td>
-                        <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
-                        <td>{t.dir}</td>
-                        <td style={{ color: 'var(--text-dim)', fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.setups?.join(', ')}>{t.setups?.join(', ') || '—'}</td>
-                        <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
-                        <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Dev'}</span></td>
-                        <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
-                        <td style={{ color: 'var(--text-dim)' }}>{t.notes}</td>
-                        <td><button onClick={() => handleDeleteTrade(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>x</button></td>
-                      </tr>
-                    ))}
+                    ? <tr><td colSpan={13} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
+                    : [...trades].reverse().map(t => {
+                      const statusColor = t.status === 'WIN' ? 'var(--green)' : t.status === 'LOSS' ? 'var(--red)' : 'var(--gold)'
+                      const statusBg = t.status === 'WIN' ? 'rgba(82,196,122,0.12)' : t.status === 'LOSS' ? 'rgba(224,82,82,0.12)' : 'rgba(201,168,76,0.12)'
+                      return (
+                        <tr key={t.id} onClick={() => setViewingTrade(t)} style={{ cursor: 'pointer' }}>
+                          <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
+                          <td style={{ color: 'var(--text-muted)' }}>{t.closeDate || '—'}</td>
+                          <td><span style={{ background: statusBg, color: statusColor, border: '1px solid', borderColor: statusColor, fontFamily: 'Rajdhani, sans-serif', fontSize: 10, fontWeight: 700, letterSpacing: '1px', padding: '2px 7px', borderRadius: 3 }}>{t.status}</span></td>
+                          <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.account || '—'}</td>
+                          <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
+                          <td style={{ color: 'var(--text-dim)' }}>{t.dir}</td>
+                          <td style={{ color: 'var(--text-dim)' }}>{t.entry ? '$' + t.entry.toFixed(2) : '—'}</td>
+                          <td style={{ color: 'var(--text-dim)' }}>{t.exit ? '$' + t.exit.toFixed(2) : '—'}</td>
+                          <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl || 0).toFixed(0)}</span></td>
+                          <td style={{ color: (t.roi || 0) > 0 ? 'var(--green)' : (t.roi || 0) < 0 ? 'var(--red)' : 'var(--text-muted)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, fontSize: 12 }}>{t.roi ? (t.roi > 0 ? '+' : '') + t.roi + '%' : '—'}</td>
+                          <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Dev'}</span></td>
+                          <td style={{ color: 'var(--text-dim)', fontSize: 11, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.setups?.join(', ')}>{t.setups?.join(', ') || '—'}</td>
+                          <td style={{ color: 'var(--text-dim)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.notes || '—'}</td>
+                        </tr>
+                      )
+                    })}
                 </tbody>
               </table>
             </div>

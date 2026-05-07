@@ -1,4 +1,4 @@
-import { AppData, Mentee, MenteePlan, Trade, SavedSession } from './types'
+import { AppData, Mentee, MenteePlan, Trade, SavedSession, TradeStatus } from './types'
 
 export const DEFAULT_MENTEES = [
   'Knight', 'Tim Park', 'Giovanni Santiago', 'Maggie Stewart',
@@ -35,24 +35,40 @@ export async function saveDataRemote(data: AppData): Promise<void> {
   } catch (e) { console.error('Failed to save remote data:', e) }
 }
 
+function autoDetectStatus(pnl: number, exit: number, closeDate: string): TradeStatus {
+  if (!exit && !closeDate) return 'OPEN'
+  return pnl >= 0 ? 'WIN' : 'LOSS'
+}
+
+function calcRoi(entry: number, exit: number, qty: number, pnl: number): number {
+  const cost = entry * qty * 100
+  if (!cost || !exit) return 0
+  return parseFloat(((pnl / cost) * 100).toFixed(1))
+}
+
 function migrateTrade(t: any): Trade {
-  // migrate old single setup string to setups array
-  const setups = t.setups
-    ? t.setups
-    : t.setup
-      ? [t.setup]
-      : []
+  const setups = t.setups ? t.setups : t.setup ? [t.setup] : []
+  const entry = t.entry || 0
+  const exit = t.exit || 0
+  const qty = t.qty || 1
+  const pnl = t.pnl || 0
+  const closeDate = t.closeDate || ''
+  const status: TradeStatus = t.status || autoDetectStatus(pnl, exit, closeDate)
+  const roi = t.roi !== undefined ? t.roi : calcRoi(entry, exit, qty, pnl)
   return {
     id: t.id || Date.now().toString(),
     date: t.date || '',
+    closeDate,
     account: t.account || '',
     ticker: t.ticker || '',
     dir: t.dir || '',
     setups,
-    entry: t.entry || 0,
-    exit: t.exit || 0,
-    qty: t.qty || 1,
-    pnl: t.pnl || 0,
+    entry,
+    exit,
+    qty,
+    pnl,
+    roi,
+    status,
     plan: t.plan || '',
     emotion: t.emotion || 0,
     notes: t.notes || '',
@@ -68,14 +84,9 @@ export function getMentee(data: AppData, name: string): Mentee {
   m.plan = { ...EMPTY_PLAN, ...m.plan }
   if (!m.sessions) m.sessions = []
   if (!m.plan.accounts) m.plan.accounts = []
-  // migrate trades
   m.trades = (m.trades || []).map(migrateTrade)
-  // migrate old single-account fields
   if ((m.plan as any).accountSize && m.plan.accounts.length === 0) {
-    m.plan.accounts = [{
-      id: 'legacy-1', type: 'Main - Buying', label: 'Main',
-      balance: (m.plan as any).accountSize || 0, notes: ''
-    }]
+    m.plan.accounts = [{ id: 'legacy-1', type: 'Main - Buying', label: 'Main', balance: (m.plan as any).accountSize || 0, notes: '' }]
   }
   return m
 }
@@ -91,6 +102,24 @@ export function addTrade(data: AppData, name: string, trade: Omit<Trade, 'id'>):
   const mentee = getMentee(data, name)
   const newTrade: Trade = { ...trade, id: Date.now().toString() }
   mentee.trades = [...mentee.trades, newTrade]
+  mentee.updatedAt = new Date().toISOString()
+  return { ...data, mentees: { ...data.mentees, [name]: mentee } }
+}
+
+export function updateTrade(data: AppData, name: string, tradeId: string, updates: Partial<Trade>): AppData {
+  const mentee = getMentee(data, name)
+  mentee.trades = mentee.trades.map(t => {
+    if (t.id !== tradeId) return t
+    const updated = { ...t, ...updates }
+    // re-derive status and roi if exit/closeDate/pnl changed
+    if (!updates.status) {
+      updated.status = autoDetectStatus(updated.pnl, updated.exit, updated.closeDate)
+    }
+    if (updates.exit !== undefined || updates.pnl !== undefined) {
+      updated.roi = calcRoi(updated.entry, updated.exit, updated.qty, updated.pnl)
+    }
+    return updated
+  })
   mentee.updatedAt = new Date().toISOString()
   return { ...data, mentees: { ...data.mentees, [name]: mentee } }
 }
@@ -120,7 +149,6 @@ export function getAllMenteeNames(data: AppData): string[] {
   return [...DEFAULT_MENTEES, ...custom]
 }
 
-// Setup combination analytics
 export function getSetupCombinationStats(trades: Trade[]): Record<string, { count: number; wins: number; pnl: number }> {
   const stats: Record<string, { count: number; wins: number; pnl: number }> = {}
   trades.forEach(t => {
