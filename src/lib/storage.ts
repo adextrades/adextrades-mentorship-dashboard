@@ -1,4 +1,4 @@
-import { AppData, Mentee, MenteePlan, Trade, SavedSession } from './types'
+import { AppData, Mentee, MenteePlan, Trade, SavedSession, TradingAccount } from './types'
 
 export const DEFAULT_MENTEES = [
   'Knight', 'Tim Park', 'Giovanni Santiago', 'Maggie Stewart',
@@ -8,8 +8,8 @@ export const DEFAULT_MENTEES = [
 
 export const EMPTY_PLAN: MenteePlan = {
   goalShortTerm: '', goalLongTerm: '', goalTimeline: '', goalPortTarget: 0,
-  accountSize: 0, cashAvailable: 0, sharesHeld: '',
-  exp: 'Beginner (0–1 yr)', focus: 'Buying Options',
+  accounts: [],
+  sharesHeld: '', exp: 'Beginner (0–1 yr)', focus: 'Buying Options',
   portStart: 0, maxTrades: 2, maxSize: 500, stopLoss: 40, target: 30,
   dte: 'No weekly expiration swings', approval: 'All trades',
   ci1: 200, ci2Trigger: 3000, ci2: 500, drawdown: 400,
@@ -28,7 +28,11 @@ export async function loadDataRemote(): Promise<AppData> {
 
 export async function saveDataRemote(data: AppData): Promise<void> {
   try {
-    await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    await fetch('/api/data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
   } catch (e) { console.error('Failed to save remote data:', e) }
 }
 
@@ -39,6 +43,17 @@ export function getMentee(data: AppData, name: string): Mentee {
   const m = data.mentees[name]
   m.plan = { ...EMPTY_PLAN, ...m.plan }
   if (!m.sessions) m.sessions = []
+  if (!m.plan.accounts) m.plan.accounts = []
+  // migrate old single-account fields
+  if ((m.plan as any).accountSize && m.plan.accounts.length === 0) {
+    m.plan.accounts = [{
+      id: 'legacy-1',
+      type: 'Main - Buying',
+      label: 'Main',
+      balance: (m.plan as any).accountSize || 0,
+      notes: ''
+    }]
+  }
   return m
 }
 

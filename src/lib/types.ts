@@ -1,6 +1,7 @@
 export interface Trade {
   id: string
   date: string
+  account: string
   ticker: string
   dir: string
   setup: string
@@ -22,7 +23,6 @@ export interface SavedSession {
   id: string
   date: string
   savedAt: string
-  // Intake answers
   trades: string
   followed: string
   deviation: string
@@ -31,9 +31,17 @@ export interface SavedSession {
   focus: string
   win: string
   mistake: string
-  // AI outputs
   aiBrief: string
+  fathomNotes: string
   flags: SessionFlag[]
+}
+
+export interface TradingAccount {
+  id: string
+  type: string
+  label: string
+  balance: number
+  notes: string
 }
 
 export interface MenteePlan {
@@ -42,9 +50,8 @@ export interface MenteePlan {
   goalLongTerm: string
   goalTimeline: string
   goalPortTarget: number
-  // Section 2 — Assets & Profile
-  accountSize: number
-  cashAvailable: number
+  // Section 2 — Assets & Profile (multi-account)
+  accounts: TradingAccount[]
   sharesHeld: string
   exp: string
   focus: string
@@ -82,3 +89,19 @@ export interface Mentee {
 export interface AppData {
   mentees: Record<string, Mentee>
 }
+
+export const ACCOUNT_TYPES = [
+  'Main - Buying',
+  'Main - Selling',
+  'IRA',
+  'Roth IRA',
+  '401k',
+  'Cash Account',
+  'Margin',
+  'Paper Trading',
+]
+
+export const EMOTIONS = [
+  'Confident', 'Uncertain', 'FOMO', 'Revenge Trading',
+  'Calm', 'Anxious', 'Greedy', 'Patient'
+]

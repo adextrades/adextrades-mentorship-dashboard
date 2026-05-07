@@ -5,7 +5,7 @@ import {
   loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
   deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN
 } from '@/lib/storage'
-import { AppData, MenteePlan, Trade, SavedSession } from '@/lib/types'
+import { AppData, MenteePlan, Trade, SavedSession, TradingAccount, ACCOUNT_TYPES, EMOTIONS } from '@/lib/types'
 import styles from './dashboard.module.css'
 
 const TABS = ['Trade Plan', 'Session Intake', 'Trade Log', 'Dashboard']
@@ -18,15 +18,21 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Trade Plan state
+  // Trade Plan
   const [plan, setPlan] = useState<MenteePlan>({ ...EMPTY_PLAN })
   const [planLocked, setPlanLocked] = useState(true)
   const [approvedInput, setApprovedInput] = useState('')
   const [restrictedInput, setRestrictedInput] = useState('')
   const [planAI, setPlanAI] = useState('')
   const [planAILoading, setPlanAILoading] = useState(false)
+  // Account editing
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [newAccountType, setNewAccountType] = useState(ACCOUNT_TYPES[0])
+  const [newAccountBalance, setNewAccountBalance] = useState('')
+  const [newAccountNotes, setNewAccountNotes] = useState('')
+  const [showAddAccount, setShowAddAccount] = useState(false)
 
-  // Intake state
+  // Session Intake
   const [intakeTrades, setIntakeTrades] = useState('')
   const [intakeFollowed, setIntakeFollowed] = useState('')
   const [intakeDeviation, setIntakeDeviation] = useState('')
@@ -39,10 +45,12 @@ export default function Dashboard() {
   const [intakeAI, setIntakeAI] = useState('')
   const [intakeAILoading, setIntakeAILoading] = useState(false)
   const [intakeFlags, setIntakeFlags] = useState<{ title: string; msg: string }[]>([])
+  const [fathomNotes, setFathomNotes] = useState('')
   const [sessionSaved, setSessionSaved] = useState(false)
 
-  // Trade log state
+  // Trade Log
   const [showTradeForm, setShowTradeForm] = useState(false)
+  const [tradeAccount, setTradeAccount] = useState('')
   const [tradeTicker, setTradeTicker] = useState('')
   const [tradeDir, setTradeDir] = useState('Call')
   const [tradeSetup, setTradeSetup] = useState('2u (bullish)')
@@ -54,14 +62,10 @@ export default function Dashboard() {
   const [tradeEmotion, setTradeEmotion] = useState('1')
   const [tradeNotes, setTradeNotes] = useState('')
 
-  // Dashboard AI
+  // Dashboard
   const [dashAI, setDashAI] = useState('')
   const [dashAILoading, setDashAILoading] = useState(false)
-
-  // Session viewer modal
   const [viewingSession, setViewingSession] = useState<SavedSession | null>(null)
-
-  // New mentee
   const [newMenteeName, setNewMenteeName] = useState('')
   const [showNewMentee, setShowNewMentee] = useState(false)
 
@@ -81,10 +85,9 @@ export default function Dashboard() {
   const clearIntakeForm = () => {
     setIntakeTrades(''); setIntakeFollowed(''); setIntakeDeviation('')
     setIntakePnl(''); setIntakeEmotion(0); setIntakeFocus('')
-    setIntakeWin(''); setIntakeMistake('')
+    setIntakeWin(''); setIntakeMistake(''); setFathomNotes('')
     setIntakeDate(new Date().toISOString().slice(0, 10))
-    setIntakeAI(''); setIntakeFlags([])
-    setSessionSaved(false)
+    setIntakeAI(''); setIntakeFlags([]); setSessionSaved(false)
   }
 
   const handleSelectMentee = useCallback((name: string) => {
@@ -95,13 +98,13 @@ export default function Dashboard() {
     setPlanLocked(true)
     setDashAI(''); setPlanAI('')
     clearIntakeForm()
+    setTradeAccount('')
   }, [data])
 
   const handleSavePlan = async () => {
     if (!activeMentee) { alert('Select a mentee first.'); return }
     const updated = saveMenteePlan(data, activeMentee, plan)
-    setData(updated)
-    await persistData(updated)
+    setData(updated); await persistData(updated)
     setPlanLocked(true)
     alert('Plan saved for ' + activeMentee + '!')
   }
@@ -111,12 +114,35 @@ export default function Dashboard() {
     const updated = addMentee(data, newMenteeName.trim())
     setData(updated); persistData(updated)
     setActiveMentee(newMenteeName.trim()); setPlan({ ...EMPTY_PLAN })
-    setPlanLocked(false)
-    setNewMenteeName(''); setShowNewMentee(false)
+    setPlanLocked(false); setNewMenteeName(''); setShowNewMentee(false)
+  }
+
+  // Account management
+  const handleAddAccount = () => {
+    if (!newAccountBalance) return
+    const newAcc: TradingAccount = {
+      id: Date.now().toString(),
+      type: newAccountType,
+      label: newAccountType,
+      balance: parseFloat(newAccountBalance) || 0,
+      notes: newAccountNotes
+    }
+    setPlan(p => ({ ...p, accounts: [...(p.accounts || []), newAcc] }))
+    setNewAccountType(ACCOUNT_TYPES[0]); setNewAccountBalance(''); setNewAccountNotes('')
+    setShowAddAccount(false)
+  }
+
+  const handleDeleteAccount = (id: string) => {
+    setPlan(p => ({ ...p, accounts: p.accounts.filter(a => a.id !== id) }))
+  }
+
+  const handleUpdateAccountBalance = (id: string, balance: number) => {
+    setPlan(p => ({ ...p, accounts: p.accounts.map(a => a.id === id ? { ...a, balance } : a) }))
   }
 
   const handleLogTrade = () => {
     if (!activeMentee) { alert('Select a mentee first.'); return }
+    if (!tradeAccount) { alert('Select an account first.'); return }
     const entry = parseFloat(tradeEntry) || 0
     const exit = parseFloat(tradeExit) || 0
     const qty = parseInt(tradeQty) || 1
@@ -124,9 +150,10 @@ export default function Dashboard() {
     let ticker = tradeTicker.toUpperCase()
     if (!ticker.startsWith('$')) ticker = '$' + ticker
     const trade: Omit<Trade, 'id'> = {
-      date: new Date().toISOString().slice(0, 10), ticker, dir: tradeDir,
-      setup: tradeSetup, entry, exit, qty, pnl: manualPnl,
-      plan: tradePlanFollow, emotion: parseInt(tradeEmotion), notes: tradeNotes
+      date: new Date().toISOString().slice(0, 10),
+      account: tradeAccount, ticker, dir: tradeDir, setup: tradeSetup,
+      entry, exit, qty, pnl: manualPnl, plan: tradePlanFollow,
+      emotion: parseInt(tradeEmotion), notes: tradeNotes
     }
     const updated = addTrade(data, activeMentee, trade)
     setData(updated); persistData(updated); setShowTradeForm(false)
@@ -144,35 +171,25 @@ export default function Dashboard() {
   const handleSaveSession = async () => {
     if (!activeMentee) { alert('Select a mentee first.'); return }
     const session: Omit<SavedSession, 'id' | 'savedAt'> = {
-      date: intakeDate,
-      trades: intakeTrades, followed: intakeFollowed,
-      deviation: intakeDeviation, pnl: intakePnl,
-      emotion: intakeEmotion, focus: intakeFocus,
-      win: intakeWin, mistake: intakeMistake,
-      aiBrief: intakeAI,
-      flags: intakeFlags
+      date: intakeDate, trades: intakeTrades, followed: intakeFollowed,
+      deviation: intakeDeviation, pnl: intakePnl, emotion: intakeEmotion,
+      focus: intakeFocus, win: intakeWin, mistake: intakeMistake,
+      aiBrief: intakeAI, fathomNotes, flags: intakeFlags
     }
     const updated = saveSession(data, activeMentee, session)
-    setData(updated)
-    await persistData(updated)
-    setSessionSaved(true)
-    clearIntakeForm()
+    setData(updated); await persistData(updated)
+    setSessionSaved(true); clearIntakeForm()
     alert('Session saved! Form cleared and ready for next session.')
   }
 
   const handleLoadSession = (session: SavedSession) => {
     setViewingSession(null)
-    setIntakeDate(session.date)
-    setIntakeTrades(session.trades)
-    setIntakeFollowed(session.followed)
-    setIntakeDeviation(session.deviation)
-    setIntakePnl(session.pnl)
-    setIntakeEmotion(session.emotion)
-    setIntakeFocus(session.focus)
-    setIntakeWin(session.win)
-    setIntakeMistake(session.mistake)
-    setIntakeAI(session.aiBrief)
-    setIntakeFlags(session.flags)
+    setIntakeDate(session.date); setIntakeTrades(session.trades)
+    setIntakeFollowed(session.followed); setIntakeDeviation(session.deviation)
+    setIntakePnl(session.pnl); setIntakeEmotion(session.emotion)
+    setIntakeFocus(session.focus); setIntakeWin(session.win)
+    setIntakeMistake(session.mistake); setIntakeAI(session.aiBrief)
+    setFathomNotes(session.fathomNotes || ''); setIntakeFlags(session.flags)
     setActiveTab(1)
   }
 
@@ -187,8 +204,9 @@ export default function Dashboard() {
   const handleGeneratePlanSummary = async () => {
     if (!activeMentee) { alert('Select and save a plan first.'); return }
     setPlanAILoading(true); setPlanAI('')
+    const accountsSummary = plan.accounts?.map(a => a.type + ': $' + a.balance.toLocaleString()).join(', ') || 'None set'
     try {
-      const text = await callClaude('You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ' + activeMentee + '\n\nGOALS:\n- Short-term: ' + (plan.goalShortTerm || 'Not set') + '\n- Long-term: ' + (plan.goalLongTerm || 'Not set') + '\n- Portfolio target: $' + (plan.goalPortTarget || 0) + '\n- Timeline: ' + (plan.goalTimeline || 'Not set') + '\n\nASSETS:\n- Account: $' + (plan.accountSize || 0) + '\n- Cash: $' + (plan.cashAvailable || 0) + '\n- Holdings: ' + (plan.sharesHeld || 'None') + '\n- Experience: ' + plan.exp + '\n- Focus: ' + plan.focus + '\n\nRULES:\n- Starting port: $' + plan.portStart + '\n- Max trades: ' + plan.maxTrades + '\n- Max size: $' + plan.maxSize + '\n- Stop loss: ' + plan.stopLoss + '%\n- Target: ' + plan.target + '%\n- DTE: ' + plan.dte + '\n- Approval: ' + plan.approval + '\n- Approved: ' + (plan.approved?.join(', ') || 'None') + '\n- Restricted: ' + (plan.restricted?.join(', ') || 'None') + '\n\nPSYCHOLOGY: ' + (plan.psych || 'None noted') + '\n\nWrite 180-220 words. Start with their goals. Write TO the mentee in second person. Be direct. Reference TheStrat notation where applicable. End with what success looks like at their first milestone.')
+      const text = await callClaude('You are a trading mentor assistant for AdexTrades, built around TheStrat methodology by Rob Smith.\n\nGenerate a concise, professional trade plan summary for mentee: ' + activeMentee + '\n\nGOALS:\n- Short-term: ' + (plan.goalShortTerm || 'Not set') + '\n- Long-term: ' + (plan.goalLongTerm || 'Not set') + '\n- Target: $' + (plan.goalPortTarget || 0) + '\n- Timeline: ' + (plan.goalTimeline || 'Not set') + '\n\nACCOUNTS: ' + accountsSummary + '\nFocus: ' + plan.focus + ' | Experience: ' + plan.exp + '\nHoldings: ' + (plan.sharesHeld || 'None') + '\n\nRULES:\n- Starting port: $' + plan.portStart + '\n- Max trades: ' + plan.maxTrades + '\n- Max size: $' + plan.maxSize + '\n- Stop loss: ' + plan.stopLoss + '%\n- Target: ' + plan.target + '%\n- DTE: ' + plan.dte + '\n- Approval: ' + plan.approval + '\n- Approved: ' + (plan.approved?.join(', ') || 'None') + '\n- Restricted: ' + (plan.restricted?.join(', ') || 'None') + '\n\nPSYCHOLOGY: ' + (plan.psych || 'None noted') + '\n\nWrite 180-220 words. Start with their goals. Write TO the mentee in second person. Be direct. Reference TheStrat notation where applicable. End with what success looks like at their first milestone.')
       setPlanAI(text)
     } catch { setPlanAI('Error generating summary. Check API connection.') }
     setPlanAILoading(false)
@@ -223,7 +241,7 @@ export default function Dashboard() {
       const pStart = p.portStart || 0; const pVal = pStart + totalPnl
       const gTarget = p.goalPortTarget || 0
       const gPct = gTarget > pStart ? Math.round(((pVal - pStart) / (gTarget - pStart)) * 100) : 0
-      const text = await callClaude('Trading mentor assistant for AdexTrades (TheStrat methodology).\n\nMentee: ' + activeMentee + '\nGoals: ST: ' + (p.goalShortTerm || 'Not set') + ' | LT: ' + (p.goalLongTerm || 'Not set') + '\nTarget: $' + gTarget + ' | Progress: ' + gPct + '% | Portfolio: $' + Math.round(pVal) + '\nTrades: ' + tr.length + ', Wins: ' + wins + ', P&L: $' + totalPnl.toFixed(0) + ', Deviations: ' + dev + '/' + tr.length + ', Avg emotion: ' + avgEm + '\nRecent: ' + JSON.stringify(tr.slice(-6).map((t: Trade) => ({ ticker: t.ticker, pnl: t.pnl, plan: t.plan, emotion: t.emotion }))) + '\nPlan: ' + p.focus + ', Max trades: ' + p.maxTrades + ', Psychology: ' + (p.psych || 'None') + '\n\nWrite 200-250 words. Lead with goal progress. Cover performance, discipline, psychology, one specific recommendation. Write to Adex professionally.')
+      const text = await callClaude('Trading mentor assistant for AdexTrades.\n\nMentee: ' + activeMentee + '\nGoals: ST: ' + (p.goalShortTerm || 'Not set') + ' | LT: ' + (p.goalLongTerm || 'Not set') + '\nTarget: $' + gTarget + ' | Progress: ' + gPct + '% | Portfolio: $' + Math.round(pVal) + '\nTrades: ' + tr.length + ', Wins: ' + wins + ', P&L: $' + totalPnl.toFixed(0) + ', Deviations: ' + dev + '/' + tr.length + ', Avg emotion: ' + avgEm + '\nRecent: ' + JSON.stringify(tr.slice(-6).map((t: Trade) => ({ ticker: t.ticker, account: t.account, pnl: t.pnl, plan: t.plan, emotion: t.emotion }))) + '\nPlan: ' + p.focus + ', Max trades: ' + p.maxTrades + ', Psychology: ' + (p.psych || 'None') + '\n\nWrite 200-250 words. Lead with goal progress. Cover performance, discipline, psychology, one specific recommendation. Write to Adex professionally.')
       setDashAI(text)
     } catch { setDashAI('Error. Check API connection.') }
     setDashAILoading(false)
@@ -233,6 +251,7 @@ export default function Dashboard() {
   const currentMenteeData = activeMentee ? getMentee(data, activeMentee) : null
   const trades = currentMenteeData?.trades || []
   const sessions = currentMenteeData?.sessions || []
+  const menteeAccounts = currentMenteeData?.plan?.accounts || []
   const portStart = currentMenteeData?.plan?.portStart || 0
   const goalTarget = currentMenteeData?.plan?.goalPortTarget || 0
   const goalTimeline = currentMenteeData?.plan?.goalTimeline || ''
@@ -285,14 +304,15 @@ export default function Dashboard() {
 
   if (!mounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', letterSpacing: '4px', fontSize: '13px' }}>LOADING...</div>
 
-  const inputStyle = planLocked ? { opacity: 0.6, pointerEvents: 'none' as const } : {}
+  const inputStyle = planLocked ? { opacity: 0.65, pointerEvents: 'none' as const } : {}
 
   return (
     <div className={styles.app}>
-      {/* Session Viewer Modal */}
+
+      {/* ── Session Viewer Modal ── */}
       {viewingSession && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, width: '100%', maxWidth: 680, maxHeight: '88vh', overflowY: 'auto', padding: 28 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div>
                 <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 11, fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 4 }}>Session Record</div>
@@ -300,12 +320,11 @@ export default function Dashboard() {
               </div>
               <button onClick={() => setViewingSession(null)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-dim)', cursor: 'pointer', padding: '6px 14px', borderRadius: 4, fontFamily: 'Rajdhani, sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: '1px' }}>CLOSE</button>
             </div>
-
             {[
               ['Trades Taken', viewingSession.trades],
               ['Followed Plan?', viewingSession.followed],
               ['Deviations', viewingSession.deviation],
-              ['P&L', viewingSession.pnl ? '$' + viewingSession.pnl : '—'],
+              ['P&L', viewingSession.pnl ? (parseFloat(viewingSession.pnl) >= 0 ? '+$' : '-$') + Math.abs(parseFloat(viewingSession.pnl)) : '—'],
               ['Emotional State', viewingSession.emotion ? viewingSession.emotion + '/5' : '—'],
               ['Focus for Session', viewingSession.focus],
               ['Biggest Win / Insight', viewingSession.win],
@@ -316,23 +335,24 @@ export default function Dashboard() {
                 <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{value}</div>
               </div>
             ) : null)}
-
             {viewingSession.aiBrief && (
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 6 }}>AI Session Brief</div>
                 <div style={{ background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, padding: '12px 14px', fontSize: 12, color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{viewingSession.aiBrief}</div>
               </div>
             )}
-
-            {viewingSession.flags?.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: 6 }}>Flags</div>
-                {viewingSession.flags.map((f, i) => (
-                  <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>
-                ))}
+            {viewingSession.fathomNotes && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--gold-dim)', marginBottom: 6 }}>Fathom Session Summary</div>
+                <div style={{ background: 'var(--bg3)', borderLeft: '3px solid rgba(201,168,76,0.4)', borderRadius: 4, padding: '12px 14px', fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{viewingSession.fathomNotes}</div>
               </div>
             )}
-
+            {viewingSession.flags?.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', color: 'var(--red)', marginBottom: 6 }}>Flags</div>
+                {viewingSession.flags.map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>)}
+              </div>
+            )}
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
               <button className={styles.btnGold} onClick={() => handleLoadSession(viewingSession)}>Load into Intake Form</button>
               <button className={styles.btnGhost} onClick={() => setViewingSession(null)}>Close</button>
@@ -341,7 +361,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header className={styles.header}>
         <div className={styles.wordmark}>ADEX<span>TRADES</span></div>
         <div className={styles.headerRight}>
@@ -357,7 +377,9 @@ export default function Dashboard() {
 
       <main className={styles.main}>
 
-        {/* ═══ TAB 0: TRADE PLAN ═══ */}
+        {/* ════════════════════════════════
+            TAB 0: TRADE PLAN
+            ════════════════════════════════ */}
         {activeTab === 0 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
@@ -381,28 +403,23 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Plan status bar */}
+            {/* Status bar */}
             <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, padding: '8px 12px', background: 'var(--bg3)', borderRadius: 4, fontSize: 11 }}>
-              {planLocked ? (
-                <span style={{ color: 'var(--green)' }}>● Plan locked — view only</span>
-              ) : (
-                <span style={{ color: 'var(--gold)' }}>● Editing mode — changes not saved until you click Save Plan</span>
-              )}
-              {plan.planUpdatedAt && (
-                <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>Last updated: {formatDate(plan.planUpdatedAt)}</span>
-              )}
+              {planLocked
+                ? <span style={{ color: 'var(--green)' }}>● Plan locked — view only</span>
+                : <span style={{ color: 'var(--gold)' }}>● Editing mode — changes not saved until you click Save Plan</span>}
+              {plan.planUpdatedAt && <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>Last updated: {formatDate(plan.planUpdatedAt)}</span>}
             </div>
 
             {showNewMentee && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
-                <div className={styles.formGrid}>
-                  <div className={styles.field}><label className={styles.label}>New Mentee Name</label><input className={styles.input} value={newMenteeName} onChange={e => setNewMenteeName(e.target.value)} placeholder="Full name" onKeyDown={e => e.key === 'Enter' && handleAddMentee()} /></div>
-                </div>
+                <div className={styles.formGrid}><div className={styles.field}><label className={styles.label}>New Mentee Name</label><input className={styles.input} value={newMenteeName} onChange={e => setNewMenteeName(e.target.value)} placeholder="Full name" onKeyDown={e => e.key === 'Enter' && handleAddMentee()} /></div></div>
                 <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleAddMentee}>Add Mentee</button><button className={styles.btnGhost} onClick={() => setShowNewMentee(false)}>Cancel</button></div>
               </div>
             )}
 
             <div style={inputStyle}>
+              {/* SECTION 1 — GOALS */}
               <div className={styles.sectionLabel}>Section 1 — Goals &amp; Vision</div>
               <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--bg3)', borderLeft: '3px solid var(--gold)', borderRadius: 4, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>Start here. The entire plan is built backward from these goals.</div>
               <div className={styles.formGrid}>
@@ -412,16 +429,56 @@ export default function Dashboard() {
                 <div className={styles.field}><label className={styles.label}>Target Timeline</label><input className={styles.input} value={plan.goalTimeline} onChange={e => setPlan(p => ({ ...p, goalTimeline: e.target.value }))} placeholder="e.g. 6 months, by end of 2025" /></div>
               </div>
 
-              <div className={styles.sectionLabel}>Section 2 — Assets &amp; Profile</div>
-              <div className={styles.formGrid3}>
-                <div className={styles.field}><label className={styles.label}>Total Account Size ($)</label><input className={styles.input} type="number" value={plan.accountSize || ''} onChange={e => setPlan(p => ({ ...p, accountSize: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 8000" /></div>
-                <div className={styles.field}><label className={styles.label}>Cash Available ($)</label><input className={styles.input} type="number" value={plan.cashAvailable || ''} onChange={e => setPlan(p => ({ ...p, cashAvailable: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 5000" /></div>
-                <div className={styles.field}><label className={styles.label}>Trading Experience</label><select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}><option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option></select></div>
-                <div className={styles.field} style={{ gridColumn: '1 / -1' }}><label className={styles.label}>Shares / Assets Currently Held</label><input className={styles.input} value={plan.sharesHeld} onChange={e => setPlan(p => ({ ...p, sharesHeld: e.target.value }))} placeholder="e.g. 50 shares $AAPL, 100 shares $MSFT, $2K in SCHD" /></div>
-                <div className={styles.field}><label className={styles.label}>Primary Focus</label><select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}><option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option></select></div>
-                <div className={styles.field}><label className={styles.label}>Starting Portfolio Size ($)</label><input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" /></div>
+              {/* SECTION 2 — ACCOUNTS */}
+              <div className={styles.sectionLabel}>Section 2 — Trading Accounts &amp; Profile</div>
+              <div style={{ marginBottom: 12 }}>
+                <label className={styles.label} style={{ marginBottom: 8, display: 'block' }}>Trading Accounts</label>
+                {(plan.accounts || []).length === 0 && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>No accounts added yet. Add each trading account separately.</p>}
+                {(plan.accounts || []).map(acc => (
+                  <div key={acc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '10px 14px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--gold)', marginBottom: 2 }}>{acc.type}</div>
+                      {editingAccountId === acc.id ? (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+                          <input className={styles.input} type="number" style={{ width: 140 }} value={acc.balance} onChange={e => handleUpdateAccountBalance(acc.id, parseFloat(e.target.value) || 0)} placeholder="Balance" />
+                          <button className={styles.smallBtn} onClick={() => setEditingAccountId(null)}>Done</button>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 13, color: 'var(--text)' }}>${acc.balance.toLocaleString()}{acc.notes && <span style={{ color: 'var(--text-dim)', marginLeft: 8, fontSize: 11 }}>{acc.notes}</span>}</div>
+                      )}
+                    </div>
+                    <button onClick={() => setEditingAccountId(editingAccountId === acc.id ? null : acc.id)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-dim)', cursor: 'pointer', padding: '4px 10px', borderRadius: 3, fontSize: 11 }}>Edit</button>
+                    <button onClick={() => handleDeleteAccount(acc.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                  </div>
+                ))}
+
+                {showAddAccount ? (
+                  <div style={{ padding: '14px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 8 }}>
+                    <div className={styles.formGrid3} style={{ marginBottom: 10 }}>
+                      <div className={styles.field}>
+                        <label className={styles.label}>Account Type</label>
+                        <select className={styles.select} value={newAccountType} onChange={e => setNewAccountType(e.target.value)}>
+                          {ACCOUNT_TYPES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className={styles.field}><label className={styles.label}>Balance ($)</label><input className={styles.input} type="number" value={newAccountBalance} onChange={e => setNewAccountBalance(e.target.value)} placeholder="e.g. 5600" /></div>
+                      <div className={styles.field}><label className={styles.label}>Notes (optional)</label><input className={styles.input} value={newAccountNotes} onChange={e => setNewAccountNotes(e.target.value)} placeholder="e.g. options only" /></div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleAddAccount}>Add Account</button><button className={styles.btnGhost} onClick={() => setShowAddAccount(false)}>Cancel</button></div>
+                  </div>
+                ) : (
+                  <button className={styles.btnGhost} style={{ marginTop: 4 }} onClick={() => setShowAddAccount(true)}>+ Add Account</button>
+                )}
               </div>
 
+              <div className={styles.formGrid3}>
+                <div className={styles.field}><label className={styles.label}>Trading Experience</label><select className={styles.select} value={plan.exp} onChange={e => setPlan(p => ({ ...p, exp: e.target.value }))}><option>Beginner (0–1 yr)</option><option>Intermediate (1–3 yrs)</option><option>Advanced (3–5 yrs)</option><option>Expert (5+ yrs)</option></select></div>
+                <div className={styles.field}><label className={styles.label}>Primary Focus</label><select className={styles.select} value={plan.focus} onChange={e => setPlan(p => ({ ...p, focus: e.target.value }))}><option>Buying Options</option><option>Selling Options</option><option>Swing Trading Stocks</option><option>Mixed (Buying + Selling)</option><option>TheStrat Setups Only</option></select></div>
+                <div className={styles.field}><label className={styles.label}>Starting Portfolio Size ($)</label><input className={styles.input} type="number" value={plan.portStart || ''} onChange={e => setPlan(p => ({ ...p, portStart: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 2000" /></div>
+                <div className={styles.field} style={{ gridColumn: '1 / -1' }}><label className={styles.label}>Shares / Assets Currently Held</label><input className={styles.input} value={plan.sharesHeld} onChange={e => setPlan(p => ({ ...p, sharesHeld: e.target.value }))} placeholder="e.g. 50 shares $AAPL, 100 shares $MSFT, $2K in SCHD" /></div>
+              </div>
+
+              {/* SECTION 3 — TRADE RULES */}
               <div className={styles.sectionLabel}>Section 3 — Trade Rules</div>
               <div className={styles.formGrid3}>
                 <div className={styles.field}><label className={styles.label}>Max Active Trades</label><input className={styles.input} type="number" value={plan.maxTrades || ''} onChange={e => setPlan(p => ({ ...p, maxTrades: parseInt(e.target.value) || 0 }))} placeholder="e.g. 2" /></div>
@@ -432,6 +489,7 @@ export default function Dashboard() {
                 <div className={styles.field}><label className={styles.label}>Requires Adex Approval</label><select className={styles.select} value={plan.approval} onChange={e => setPlan(p => ({ ...p, approval: e.target.value }))}><option>All trades</option><option>Trades over $300</option><option>Trades over $500</option><option>New tickers only</option><option>None — full discretion</option></select></div>
               </div>
 
+              {/* SECTION 4 — MILESTONES */}
               <div className={styles.sectionLabel}>Section 4 — Milestone Check-ins</div>
               <div className={styles.formGrid}>
                 <div className={styles.field}><label className={styles.label}>First Check-in Increment ($)</label><input className={styles.input} type="number" value={plan.ci1 || ''} onChange={e => setPlan(p => ({ ...p, ci1: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 200" /></div>
@@ -440,6 +498,7 @@ export default function Dashboard() {
                 <div className={styles.field}><label className={styles.label}>Max Loss Before Review ($)</label><input className={styles.input} type="number" value={plan.drawdown || ''} onChange={e => setPlan(p => ({ ...p, drawdown: parseFloat(e.target.value) || 0 }))} placeholder="e.g. 400" /></div>
               </div>
 
+              {/* SECTION 5 — APPROVED & RESTRICTED */}
               <div className={styles.sectionLabel}>Section 5 — Approved &amp; Restricted</div>
               <div className={styles.formGrid}>
                 <div className={styles.field}>
@@ -454,25 +513,21 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* SECTION 6 — PSYCHOLOGY */}
               <div className={styles.sectionLabel}>Section 6 — Psychology Notes</div>
               <div className={styles.field} style={{ marginBottom: 16 }}><label className={styles.label}>Known Behavior Patterns / Flags</label><textarea className={styles.textarea} value={plan.psych} onChange={e => setPlan(p => ({ ...p, psych: e.target.value }))} placeholder="e.g. Tends to over-trade after a loss. Needs explicit rules or will press buttons in gray areas..." /></div>
               <div className={styles.field} style={{ marginBottom: 20 }}><label className={styles.label}>Additional Coaching Notes</label><textarea className={styles.textarea} value={plan.goals} onChange={e => setPlan(p => ({ ...p, goals: e.target.value }))} placeholder="What are you specifically focused on developing in this mentee this month?" /></div>
             </div>
 
-            {!planLocked && (
-              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                <button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button>
-                <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
-              </div>
-            )}
-            {planLocked && activeMentee && (
-              <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading} style={{ marginTop: 8 }}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>
-            )}
+            {!planLocked && <div style={{ display: 'flex', gap: 10, marginTop: 8 }}><button className={styles.btnGold} onClick={handleSavePlan}>Save Plan</button><button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button></div>}
+            {planLocked && activeMentee && <button className={styles.btnOutline} onClick={handleGeneratePlanSummary} disabled={planAILoading} style={{ marginTop: 8 }}>{planAILoading ? 'Generating...' : 'Generate AI Plan Summary'}</button>}
             {(planAI || planAILoading) && <div style={{ marginTop: 20 }}><div className={styles.sectionLabel}>AI-Generated Plan Summary</div><div className={styles.aiOutput}>{planAILoading ? 'Generating...' : planAI}</div></div>}
           </div>
         )}
 
-        {/* ═══ TAB 1: SESSION INTAKE ═══ */}
+        {/* ════════════════════════════════
+            TAB 1: SESSION INTAKE
+            ════════════════════════════════ */}
         {activeTab === 1 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
@@ -487,8 +542,9 @@ export default function Dashboard() {
             )}
 
             <div className={styles.twoCol}>
+              {/* LEFT — Intake form */}
               <div>
-                <div className={styles.sectionLabel}>Pre-Session Form</div>
+                <div className={styles.sectionLabel}>Pre-Session Check-in</div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>1. Trades taken since last session</label><textarea className={styles.textarea} value={intakeTrades} onChange={e => setIntakeTrades(e.target.value)} placeholder="List tickers, direction, outcome..." /></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>2. Did you follow the trade plan?</label><select className={styles.select} value={intakeFollowed} onChange={e => setIntakeFollowed(e.target.value)}><option value="">—</option><option>Yes, fully</option><option>Mostly — minor deviations</option><option>Partially — some deviations</option><option>No — deviated significantly</option></select></div>
                 <div className={styles.field} style={{ marginBottom: 14 }}><label className={styles.label}>3. Where did you deviate (if any)?</label><textarea className={styles.textarea} value={intakeDeviation} onChange={e => setIntakeDeviation(e.target.value)} placeholder="Be specific. Which rule? Why?" /></div>
@@ -507,26 +563,47 @@ export default function Dashboard() {
                 </div>
                 {sessionSaved && <div style={{ marginTop: 10, fontSize: 12, color: 'var(--green)' }}>Session saved successfully.</div>}
               </div>
+
+              {/* RIGHT — AI Brief + Fathom Notes + Past Sessions */}
               <div>
+                {/* AI Brief */}
                 <div className={styles.sectionLabel}>AI Session Brief</div>
-                {intakeAI ? <div className={styles.aiOutput}>{intakeAI}</div> : <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fill out the form and click Analyze with AI to generate a pre-session brief.</p>}
+                {intakeAI
+                  ? <div className={styles.aiOutput}>{intakeAI}</div>
+                  : <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>Fill out the check-in and click Analyze with AI to generate a pre-session brief.</p>}
+
                 {intakeFlags.length > 0 && (
-                  <>
-                    <div className={styles.divider} />
+                  <div style={{ marginTop: 12 }}>
                     <div className={styles.sectionLabel}>Pattern Flags</div>
                     {intakeFlags.map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>)}
-                  </>
+                  </div>
                 )}
-                {activeMentee && sessions.length > 0 && (
+
+                {/* Fathom Notes */}
+                <div className={styles.divider} />
+                <div className={styles.sectionLabel}>Fathom Session Summary</div>
+                <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8, lineHeight: 1.5 }}>After the session ends, paste the Fathom summary here before saving.</p>
+                <textarea
+                  className={styles.textarea}
+                  style={{ minHeight: 180, fontSize: 12 }}
+                  value={fathomNotes}
+                  onChange={e => setFathomNotes(e.target.value)}
+                  placeholder="Paste Fathom summary here after the session..."
+                />
+
+                {/* Past Sessions quick list */}
+                {sessions.length > 0 && (
                   <>
                     <div className={styles.divider} />
                     <div className={styles.sectionLabel}>Past Sessions ({sessions.length})</div>
                     {[...sessions].reverse().map(s => (
-                      <div key={s.id} onClick={() => setViewingSession(s)} style={{ padding: '8px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={s.id} onClick={() => setViewingSession(s)} style={{ padding: '8px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--gold-dim)')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
                         <span style={{ color: 'var(--gold)', fontWeight: 600 }}>{formatDate(s.date)}</span>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', letterSpacing: '1px' }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
                           {s.pnl && <span style={{ color: parseFloat(s.pnl) >= 0 ? 'var(--green)' : 'var(--red)', fontSize: 11 }}>{parseFloat(s.pnl) >= 0 ? '+' : ''}${s.pnl}</span>}
+                          {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', letterSpacing: '1px' }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
                           <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>→</span>
                         </div>
                       </div>
@@ -538,16 +615,36 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ═══ TAB 2: TRADE LOG ═══ */}
+        {/* ════════════════════════════════
+            TAB 2: TRADE LOG
+            ════════════════════════════════ */}
         {activeTab === 2 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
               <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
               <button className={styles.btnGold} onClick={() => { if (!activeMentee) { alert('Select a mentee first.'); return } setShowTradeForm(s => !s) }}>+ Log Trade</button>
             </div>
+
             {showTradeForm && (
               <div className={styles.card} style={{ marginBottom: 20 }}>
                 <div className={styles.cardTitle}>New Trade Entry</div>
+                {/* Account selector — must select first */}
+                <div className={styles.field} style={{ marginBottom: 16 }}>
+                  <label className={styles.label}>Select Account <span style={{ color: 'var(--red)' }}>*</span></label>
+                  {menteeAccounts.length === 0
+                    ? <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No accounts set up. Add accounts in the Trade Plan tab first.</p>
+                    : (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                        {menteeAccounts.map(acc => (
+                          <button key={acc.id}
+                            onClick={() => setTradeAccount(acc.type)}
+                            style={{ padding: '6px 14px', borderRadius: 4, border: '1px solid', borderColor: tradeAccount === acc.type ? 'var(--gold)' : 'var(--border)', background: tradeAccount === acc.type ? 'var(--gold-glow)' : 'transparent', color: tradeAccount === acc.type ? 'var(--gold)' : 'var(--text-dim)', cursor: 'pointer', fontSize: 12, fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, letterSpacing: '0.5px' }}>
+                            {acc.type}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                </div>
                 <div className={styles.formGrid3}>
                   <div className={styles.field}><label className={styles.label}>Ticker</label><input className={styles.input} value={tradeTicker} onChange={e => setTradeTicker(e.target.value.toUpperCase())} placeholder="$LOW" /></div>
                   <div className={styles.field}><label className={styles.label}>Direction</label><select className={styles.select} value={tradeDir} onChange={e => setTradeDir(e.target.value)}><option>Call</option><option>Put</option><option>Stock Long</option><option>Stock Short</option></select></div>
@@ -563,37 +660,55 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleLogTrade}>Log Trade</button><button className={styles.btnGhost} onClick={() => setShowTradeForm(false)}>Cancel</button></div>
               </div>
             )}
-            <div className={styles.sectionLabel}>Trade History {activeMentee && trades.length > 0 && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— {trades.length} trades</span>}</div>
+
+            <div className={styles.sectionLabel}>Trade History {trades.length > 0 && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>— {trades.length} trades</span>}</div>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
-                <thead><tr><th style={{ width: 90 }}>Date</th><th style={{ width: 80 }}>Ticker</th><th style={{ width: 90 }}>Direction</th><th style={{ width: 100 }}>Setup</th><th style={{ width: 80 }}>P&amp;L</th><th style={{ width: 80 }}>Plan</th><th style={{ width: 70 }}>Emotion</th><th>Notes</th><th style={{ width: 30 }}></th></tr></thead>
+                <thead><tr>
+                  <th style={{ width: 85 }}>Date</th>
+                  <th style={{ width: 110 }}>Account</th>
+                  <th style={{ width: 75 }}>Ticker</th>
+                  <th style={{ width: 80 }}>Dir</th>
+                  <th style={{ width: 95 }}>Setup</th>
+                  <th style={{ width: 75 }}>P&amp;L</th>
+                  <th style={{ width: 75 }}>Plan</th>
+                  <th style={{ width: 65 }}>Emotion</th>
+                  <th>Notes</th>
+                  <th style={{ width: 28 }}></th>
+                </tr></thead>
                 <tbody>
-                  {trades.length === 0 ? <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
-                  : [...trades].reverse().map(t => (
-                    <tr key={t.id}>
-                      <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
-                      <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
-                      <td>{t.dir}</td><td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
-                      <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
-                      <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Deviated'}</span></td>
-                      <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
-                      <td style={{ color: 'var(--text-dim)' }}>{t.notes}</td>
-                      <td><button onClick={() => handleDeleteTrade(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>x</button></td>
-                    </tr>
-                  ))}
+                  {trades.length === 0
+                    ? <tr><td colSpan={10} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)', fontSize: 12 }}>Select a mentee and log trades to populate history.</td></tr>
+                    : [...trades].reverse().map(t => (
+                      <tr key={t.id}>
+                        <td style={{ color: 'var(--text-dim)' }}>{t.date}</td>
+                        <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.account || '—'}</td>
+                        <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
+                        <td>{t.dir}</td>
+                        <td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
+                        <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
+                        <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Dev'}</span></td>
+                        <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
+                        <td style={{ color: 'var(--text-dim)' }}>{t.notes}</td>
+                        <td><button onClick={() => handleDeleteTrade(t.id)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>x</button></td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* ═══ TAB 3: DASHBOARD ═══ */}
+        {/* ════════════════════════════════
+            TAB 3: DASHBOARD
+            ════════════════════════════════ */}
         {activeTab === 3 && (
           <div className={styles.panel}>
             <div className={styles.menteeBar}>
               <div className={styles.field} style={{ flex: 1 }}><label className={styles.label}>Mentee Dashboard</label><select className={styles.select} value={activeMentee} onChange={e => handleSelectMentee(e.target.value)}><option value="">— select mentee —</option>{menteeNames.map(n => <option key={n} value={n}>{n}</option>)}</select></div>
               <button className={styles.btnOutline} onClick={handleDashAI} disabled={dashAILoading}>{dashAILoading ? 'Analyzing...' : 'AI Insights'}</button>
             </div>
+
             {!activeMentee ? (
               <div style={{ textAlign: 'center', padding: '80px 0', color: 'var(--text-muted)', fontSize: 13 }}>Select a mentee to view their dashboard.</div>
             ) : (
@@ -623,6 +738,18 @@ export default function Dashboard() {
                         <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6 }}>${Math.max(0, goalTarget - portVal).toLocaleString()} remaining to goal</div>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Accounts overview */}
+                {menteeAccounts.length > 0 && (
+                  <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {menteeAccounts.map(acc => (
+                      <div key={acc.id} style={{ padding: '10px 16px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, minWidth: 140 }}>
+                        <div style={{ fontSize: 10, color: 'var(--gold-dim)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 4 }}>{acc.type}</div>
+                        <div style={{ fontFamily: 'Rajdhani, sans-serif', fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>${acc.balance.toLocaleString()}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -659,28 +786,27 @@ export default function Dashboard() {
 
                   <div>
                     <div className={styles.sectionLabel}>Psychology Flags</div>
-                    {getFlags().length > 0 ? getFlags().map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags detected. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
-
+                    {getFlags().length > 0 ? getFlags().map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
                     <div className={styles.divider} />
-
                     <div className={styles.sectionLabel}>Setup Breakdown</div>
                     {Object.entries(setupBreakdown).length > 0 ? Object.entries(setupBreakdown).map(([s, d]) => <div key={s} className={styles.ruleItem}><span className={styles.ruleKey}>{s}</span><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count}x</span><span className={styles.ruleVal} style={d.pnl < 0 ? { color: 'var(--red)' } : {}}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span></span></div>) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No trades logged yet.</p>}
 
-                    {/* Previous Sessions */}
                     {sessions.length > 0 && (
                       <>
                         <div className={styles.divider} />
                         <div className={styles.sectionLabel}>Previous Sessions ({sessions.length})</div>
                         {[...sessions].reverse().map(s => (
-                          <div key={s.id} onClick={() => setViewingSession(s)} style={{ padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', transition: 'border-color 0.15s' }}
+                          <div key={s.id} onClick={() => setViewingSession(s)}
+                            style={{ padding: '10px 12px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 6, cursor: 'pointer', transition: 'border-color 0.15s' }}
                             onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--gold-dim)')}
                             onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                               <span style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, fontSize: 13, color: 'var(--gold)' }}>{formatDate(s.date)}</span>
                               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                                 {s.pnl && <span style={{ fontSize: 11, color: parseFloat(s.pnl) >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{parseFloat(s.pnl) >= 0 ? '+' : ''}${s.pnl}</span>}
                                 {s.emotion > 0 && <span style={{ fontSize: 10, color: s.emotion <= 2 ? 'var(--green)' : s.emotion >= 4 ? 'var(--red)' : 'var(--gold)' }}>E:{s.emotion}/5</span>}
-                                {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', letterSpacing: '1px', fontWeight: 600 }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
+                                {s.flags?.length > 0 && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>{s.flags.length} FLAG{s.flags.length > 1 ? 'S' : ''}</span>}
+                                {s.fathomNotes && <span style={{ fontSize: 10, color: 'var(--gold-dim)' }}>✓ Fathom</span>}
                               </div>
                             </div>
                             {s.followed && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Plan: {s.followed}</div>}
