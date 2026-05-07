@@ -1,4 +1,4 @@
-import { AppData, Mentee, MenteePlan, Trade, SavedSession, TradingAccount } from './types'
+import { AppData, Mentee, MenteePlan, Trade, SavedSession } from './types'
 
 export const DEFAULT_MENTEES = [
   'Knight', 'Tim Park', 'Giovanni Santiago', 'Maggie Stewart',
@@ -8,8 +8,7 @@ export const DEFAULT_MENTEES = [
 
 export const EMPTY_PLAN: MenteePlan = {
   goalShortTerm: '', goalLongTerm: '', goalTimeline: '', goalPortTarget: 0,
-  accounts: [],
-  sharesHeld: '', exp: 'Beginner (0–1 yr)', focus: 'Buying Options',
+  accounts: [], sharesHeld: '', exp: 'Beginner (0–1 yr)', focus: 'Buying Options',
   portStart: 0, maxTrades: 2, maxSize: 500, stopLoss: 40, target: 30,
   dte: 'No weekly expiration swings', approval: 'All trades',
   ci1: 200, ci2Trigger: 3000, ci2: 500, drawdown: 400,
@@ -36,6 +35,31 @@ export async function saveDataRemote(data: AppData): Promise<void> {
   } catch (e) { console.error('Failed to save remote data:', e) }
 }
 
+function migrateTrade(t: any): Trade {
+  // migrate old single setup string to setups array
+  const setups = t.setups
+    ? t.setups
+    : t.setup
+      ? [t.setup]
+      : []
+  return {
+    id: t.id || Date.now().toString(),
+    date: t.date || '',
+    account: t.account || '',
+    ticker: t.ticker || '',
+    dir: t.dir || '',
+    setups,
+    entry: t.entry || 0,
+    exit: t.exit || 0,
+    qty: t.qty || 1,
+    pnl: t.pnl || 0,
+    plan: t.plan || '',
+    emotion: t.emotion || 0,
+    notes: t.notes || '',
+    screenshots: t.screenshots || [],
+  }
+}
+
 export function getMentee(data: AppData, name: string): Mentee {
   if (!data.mentees[name]) {
     data.mentees[name] = { name, plan: { ...EMPTY_PLAN }, trades: [], sessions: [], updatedAt: new Date().toISOString() }
@@ -44,14 +68,13 @@ export function getMentee(data: AppData, name: string): Mentee {
   m.plan = { ...EMPTY_PLAN, ...m.plan }
   if (!m.sessions) m.sessions = []
   if (!m.plan.accounts) m.plan.accounts = []
+  // migrate trades
+  m.trades = (m.trades || []).map(migrateTrade)
   // migrate old single-account fields
   if ((m.plan as any).accountSize && m.plan.accounts.length === 0) {
     m.plan.accounts = [{
-      id: 'legacy-1',
-      type: 'Main - Buying',
-      label: 'Main',
-      balance: (m.plan as any).accountSize || 0,
-      notes: ''
+      id: 'legacy-1', type: 'Main - Buying', label: 'Main',
+      balance: (m.plan as any).accountSize || 0, notes: ''
     }]
   }
   return m
@@ -95,4 +118,18 @@ export function addMentee(data: AppData, name: string): AppData {
 export function getAllMenteeNames(data: AppData): string[] {
   const custom = Object.keys(data.mentees).filter(n => !DEFAULT_MENTEES.includes(n))
   return [...DEFAULT_MENTEES, ...custom]
+}
+
+// Setup combination analytics
+export function getSetupCombinationStats(trades: Trade[]): Record<string, { count: number; wins: number; pnl: number }> {
+  const stats: Record<string, { count: number; wins: number; pnl: number }> = {}
+  trades.forEach(t => {
+    if (!t.setups || t.setups.length === 0) return
+    const key = [...t.setups].sort().join(' + ')
+    if (!stats[key]) stats[key] = { count: 0, wins: 0, pnl: 0 }
+    stats[key].count++
+    if (t.pnl > 0) stats[key].wins++
+    stats[key].pnl += t.pnl
+  })
+  return stats
 }

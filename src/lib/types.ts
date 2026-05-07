@@ -4,7 +4,7 @@ export interface Trade {
   account: string
   ticker: string
   dir: string
-  setup: string
+  setups: string[]        // multi-select setup combinations
   entry: number
   exit: number
   qty: number
@@ -12,6 +12,7 @@ export interface Trade {
   plan: string
   emotion: number
   notes: string
+  screenshots: string[]   // cloudinary URLs
 }
 
 export interface SessionFlag {
@@ -45,17 +46,14 @@ export interface TradingAccount {
 }
 
 export interface MenteePlan {
-  // Section 1 — Goals & Vision
   goalShortTerm: string
   goalLongTerm: string
   goalTimeline: string
   goalPortTarget: number
-  // Section 2 — Assets & Profile (multi-account)
   accounts: TradingAccount[]
   sharesHeld: string
   exp: string
   focus: string
-  // Section 3 — Trade Rules
   portStart: number
   maxTrades: number
   maxSize: number
@@ -63,18 +61,14 @@ export interface MenteePlan {
   target: number
   dte: string
   approval: string
-  // Section 4 — Milestone Check-ins
   ci1: number
   ci2Trigger: number
   ci2: number
   drawdown: number
-  // Section 5 — Approved & Restricted
   approved: string[]
   restricted: string[]
-  // Section 6 — Psychology
   psych: string
   goals: string
-  // Meta
   planUpdatedAt: string
 }
 
@@ -101,7 +95,26 @@ export const ACCOUNT_TYPES = [
   'Paper Trading',
 ]
 
-export const EMOTIONS = [
+export const EMOTIONS_LIST = [
   'Confident', 'Uncertain', 'FOMO', 'Revenge Trading',
   'Calm', 'Anxious', 'Greedy', 'Patient'
+]
+
+export const THESTRAT_SETUPS = [
+  'FTFC', 'CCRP', 'Hammer', 'Shooter', 'PMG',
+  'Broadening Formation Reversal',
+  '2-1-2u (bullish)', '2-1-2d (bearish)',
+  '3-1-2u (bullish)', '3-1-2d (bearish)',
+  '1-3-2u (bullish)', '1-3-2d (bearish)',
+  '2u-2d reversal', '2d-2u reversal',
+  '1-2-2u (bullish)', '1-2-2d (bearish)',
+  '3-2-2 (bullish reversal)', '3-2-2 (bullish continuation)',
+  '3-2-2 (bearish reversal)', '3-2-2 (bearish continuation)',
+  '3-1-1 (consolidation)', '3-1-2 Cya Later',
+  'Double Inside', 'Triple Inside', 'Gap Fill',
+]
+
+export const MARKET_STRUCTURE_SETUPS = [
+  'OTE', 'MSS/CHoCH', 'BOS',
+  'Liquidity Sweep', 'S/R Flip', 'Moving Average Crossover',
 ]

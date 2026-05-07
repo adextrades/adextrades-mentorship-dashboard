@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
-  deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN
+  deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN,
+  getSetupCombinationStats
 } from '@/lib/storage'
-import { AppData, MenteePlan, Trade, SavedSession, TradingAccount, ACCOUNT_TYPES, EMOTIONS } from '@/lib/types'
+import { AppData, MenteePlan, Trade, SavedSession, TradingAccount, ACCOUNT_TYPES } from '@/lib/types'
 import styles from './dashboard.module.css'
+import SetupSelector from '@/components/SetupSelector'
+import ScreenshotUploader from '@/components/ScreenshotUploader'
 
 const TABS = ['Trade Plan', 'Session Intake', 'Trade Log', 'Dashboard']
-const STRAT_SETUPS = ['2u (bullish)', '2d (bearish)', '3 (outside)', '1 (inside)', 'FTFC', 'CCRP', 'OTE', 'PMH/PML', 'Other']
 
 export default function Dashboard() {
   const [data, setData] = useState<AppData>({ mentees: {} })
@@ -53,7 +55,7 @@ export default function Dashboard() {
   const [tradeAccount, setTradeAccount] = useState('')
   const [tradeTicker, setTradeTicker] = useState('')
   const [tradeDir, setTradeDir] = useState('Call')
-  const [tradeSetup, setTradeSetup] = useState('2u (bullish)')
+  const [tradeSetups, setTradeSetups] = useState<string[]>([])
   const [tradeEntry, setTradeEntry] = useState('')
   const [tradeExit, setTradeExit] = useState('')
   const [tradeQty, setTradeQty] = useState('')
@@ -61,6 +63,7 @@ export default function Dashboard() {
   const [tradePlanFollow, setTradePlanFollow] = useState('Yes')
   const [tradeEmotion, setTradeEmotion] = useState('1')
   const [tradeNotes, setTradeNotes] = useState('')
+  const [tradeScreenshots, setTradeScreenshots] = useState<string[]>([])
 
   // Dashboard
   const [dashAI, setDashAI] = useState('')
@@ -151,14 +154,16 @@ export default function Dashboard() {
     if (!ticker.startsWith('$')) ticker = '$' + ticker
     const trade: Omit<Trade, 'id'> = {
       date: new Date().toISOString().slice(0, 10),
-      account: tradeAccount, ticker, dir: tradeDir, setup: tradeSetup,
+      account: tradeAccount, ticker, dir: tradeDir, setups: tradeSetups,
       entry, exit, qty, pnl: manualPnl, plan: tradePlanFollow,
-      emotion: parseInt(tradeEmotion), notes: tradeNotes
+      emotion: parseInt(tradeEmotion), notes: tradeNotes,
+      screenshots: tradeScreenshots
     }
     const updated = addTrade(data, activeMentee, trade)
     setData(updated); persistData(updated); setShowTradeForm(false)
     setTradeTicker(''); setTradeEntry(''); setTradeExit('')
     setTradeQty(''); setTradePnl(''); setTradeNotes('')
+    setTradeSetups([]); setTradeScreenshots([])
   }
 
   const handleDeleteTrade = (tradeId: string) => {
@@ -291,11 +296,7 @@ export default function Dashboard() {
     return ms
   }
 
-  const setupBreakdown = trades.reduce((acc, t) => {
-    if (!acc[t.setup]) acc[t.setup] = { count: 0, pnl: 0 }
-    acc[t.setup].count++; acc[t.setup].pnl += t.pnl
-    return acc
-  }, {} as Record<string, { count: number; pnl: number }>)
+  const setupCombinations = getSetupCombinationStats(trades)
 
   const formatDate = (dateStr: string) => {
     try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
@@ -648,7 +649,7 @@ export default function Dashboard() {
                 <div className={styles.formGrid3}>
                   <div className={styles.field}><label className={styles.label}>Ticker</label><input className={styles.input} value={tradeTicker} onChange={e => setTradeTicker(e.target.value.toUpperCase())} placeholder="$LOW" /></div>
                   <div className={styles.field}><label className={styles.label}>Direction</label><select className={styles.select} value={tradeDir} onChange={e => setTradeDir(e.target.value)}><option>Call</option><option>Put</option><option>Stock Long</option><option>Stock Short</option></select></div>
-                  <div className={styles.field}><label className={styles.label}>Setup (TheStrat)</label><select className={styles.select} value={tradeSetup} onChange={e => setTradeSetup(e.target.value)}>{STRAT_SETUPS.map(s => <option key={s}>{s}</option>)}</select></div>
+                  <div className={styles.field}><label className={styles.label}>Setup</label><SetupSelector selected={tradeSetups} onChange={setTradeSetups} /></div>
                   <div className={styles.field}><label className={styles.label}>Entry Price ($)</label><input className={styles.input} type="number" value={tradeEntry} onChange={e => setTradeEntry(e.target.value)} placeholder="1.45" step="0.01" /></div>
                   <div className={styles.field}><label className={styles.label}>Exit Price ($)</label><input className={styles.input} type="number" value={tradeExit} onChange={e => setTradeExit(e.target.value)} placeholder="2.10" step="0.01" /></div>
                   <div className={styles.field}><label className={styles.label}>Contracts / Shares</label><input className={styles.input} type="number" value={tradeQty} onChange={e => setTradeQty(e.target.value)} placeholder="2" /></div>
@@ -657,6 +658,9 @@ export default function Dashboard() {
                   <div className={styles.field}><label className={styles.label}>Emotion Score</label><select className={styles.select} value={tradeEmotion} onChange={e => setTradeEmotion(e.target.value)}><option value="1">1 — Calm</option><option value="2">2 — Mild</option><option value="3">3 — Tense</option><option value="4">4 — Reactive</option><option value="5">5 — Emotional</option></select></div>
                 </div>
                 <div className={styles.field} style={{ marginBottom: 12 }}><label className={styles.label}>Notes</label><input className={styles.input} value={tradeNotes} onChange={e => setTradeNotes(e.target.value)} placeholder="Why you took it, what you saw..." /></div>
+                <div style={{ marginBottom: 16 }}>
+                  <ScreenshotUploader screenshots={tradeScreenshots} onChange={setTradeScreenshots} />
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}><button className={styles.btnGold} onClick={handleLogTrade}>Log Trade</button><button className={styles.btnGhost} onClick={() => setShowTradeForm(false)}>Cancel</button></div>
               </div>
             )}
@@ -685,7 +689,7 @@ export default function Dashboard() {
                         <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.account || '—'}</td>
                         <td style={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700, color: 'var(--gold)' }}>{t.ticker}</td>
                         <td>{t.dir}</td>
-                        <td style={{ color: 'var(--text-dim)' }}>{t.setup}</td>
+                        <td style={{ color: 'var(--text-dim)', fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.setups?.join(', ')}>{t.setups?.join(', ') || '—'}</td>
                         <td><span className={styles.badge + ' ' + (t.pnl > 0 ? styles.badgeWin : t.pnl < 0 ? styles.badgeLoss : styles.badgeOpen)}>{t.pnl > 0 ? '+$' : t.pnl < 0 ? '-$' : '$'}{Math.abs(t.pnl).toFixed(0)}</span></td>
                         <td><span className={styles.badge + ' ' + (t.plan === 'Yes' ? styles.badgeClean : t.plan === 'Partially' ? styles.badgeOpen : styles.badgeDeviated)}>{t.plan === 'Yes' ? 'Clean' : t.plan === 'Partially' ? 'Partial' : 'Dev'}</span></td>
                         <td style={{ color: t.emotion <= 2 ? 'var(--green)' : t.emotion >= 4 ? 'var(--red)' : 'var(--gold)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>{t.emotion}/5</td>
@@ -788,8 +792,21 @@ export default function Dashboard() {
                     <div className={styles.sectionLabel}>Psychology Flags</div>
                     {getFlags().length > 0 ? getFlags().map((f, i) => <div key={i} className={styles.flag}><div className={styles.flagTitle}>{f.title}</div>{f.msg}</div>) : <p style={{ color: trades.length ? 'var(--green)' : 'var(--text-muted)', fontSize: 12, marginBottom: 16 }}>{trades.length ? 'No major flags. Keep monitoring.' : 'Log trades to surface behavioral patterns.'}</p>}
                     <div className={styles.divider} />
-                    <div className={styles.sectionLabel}>Setup Breakdown</div>
-                    {Object.entries(setupBreakdown).length > 0 ? Object.entries(setupBreakdown).map(([s, d]) => <div key={s} className={styles.ruleItem}><span className={styles.ruleKey}>{s}</span><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count}x</span><span className={styles.ruleVal} style={d.pnl < 0 ? { color: 'var(--red)' } : {}}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span></span></div>) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>No trades logged yet.</p>}
+                    <div className={styles.sectionLabel}>Setup Combination Performance</div>
+                    {Object.keys(setupCombinations).length > 0 ? (
+                      Object.entries(setupCombinations)
+                        .sort((a, b) => b[1].count - a[1].count)
+                        .map(([combo, d]) => (
+                          <div key={combo} className={styles.ruleItem} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                            <div style={{ fontSize: 11, color: 'var(--text)', fontWeight: 500, lineHeight: 1.3 }}>{combo}</div>
+                            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.count} trade{d.count !== 1 ? 's' : ''}</span>
+                              <span style={{ fontSize: 11, color: d.wins / d.count >= 0.5 ? 'var(--green)' : 'var(--red)' }}>{Math.round(d.wins / d.count * 100)}% WR</span>
+                              <span className={styles.ruleVal} style={{ fontSize: 12, color: d.pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{d.pnl >= 0 ? '+' : ''}${Math.round(d.pnl)}</span>
+                            </div>
+                          </div>
+                        ))
+                    ) : <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>Log trades to see setup performance.</p>}
 
                     {sessions.length > 0 && (
                       <>
