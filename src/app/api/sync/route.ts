@@ -111,10 +111,21 @@ if (profileError || !profile) {
 
 export async function DELETE(request: Request) {
   try {
-    const { sessionId } = await request.json()
-    if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 })
+    const { sessionDate, menteeEmail } = await request.json()
+    if (!sessionDate || !menteeEmail) return NextResponse.json({ error: 'sessionDate and menteeEmail required' }, { status: 400 })
     const supabase = getSupabase()
-    const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
+    // Look up user ID from email
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', menteeEmail)
+      .single()
+    if (profileError || !profile) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    const { error } = await supabase
+      .from('sessions')
+      .delete()
+      .eq('user_id', profile.id)
+      .eq('session_date', sessionDate)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
   } catch (error) {
