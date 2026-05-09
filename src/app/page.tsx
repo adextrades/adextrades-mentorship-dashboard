@@ -79,7 +79,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDataRemote().then(loaded => { setData(loaded); setMounted(true) })
-    setIntakeDate(new Date().toISOString().slice(0, 10))
+    setIntakeDate(new Date().toLocaleDateString('en-CA'))
   }, [])
 
   const persistData = useCallback(async (newData: AppData) => {
@@ -94,7 +94,7 @@ export default function Dashboard() {
     setIntakeTrades(''); setIntakeFollowed(''); setIntakeDeviation('')
     setIntakePnl(''); setIntakeEmotion(0); setIntakeFocus('')
     setIntakeWin(''); setIntakeMistake(''); setFathomNotes('')
-    setIntakeDate(new Date().toISOString().slice(0, 10))
+    setIntakeDate(new Date().toLocaleDateString('en-CA'))
     setIntakeAI(''); setIntakeFlags([]); setSessionSaved(false)
   }
 
@@ -173,7 +173,7 @@ export default function Dashboard() {
     const roi = cost > 0 && exit ? parseFloat(((manualPnl / cost) * 100).toFixed(1)) : 0
     const autoStatus: TradeStatus = !exit ? 'OPEN' : manualPnl >= 0 ? 'WIN' : 'LOSS'
     const trade: Omit<Trade, 'id'> = {
-      date: new Date().toISOString().slice(0, 10),
+      date: new Date().toLocaleDateString('en-CA'),
       closeDate: tradeCloseDate,
       account: tradeAccount, ticker, dir: tradeDir, setups: tradeSetups,
       entry, exit, qty, pnl: manualPnl, roi,
@@ -340,7 +340,7 @@ export default function Dashboard() {
   const setupCombinations = getSetupCombinationStats(trades)
 
   const formatDate = (dateStr: string) => {
-    try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+    try { return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
     catch { return dateStr }
   }
 
