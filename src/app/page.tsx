@@ -224,7 +224,8 @@ export default function Dashboard() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'session', menteeEmail, data: session })
-  })
+   })
+  }
 }
 
   const handleLoadSession = (session: SavedSession) => {
