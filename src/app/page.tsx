@@ -18,6 +18,7 @@ export default function Dashboard() {
   const [data, setData] = useState<AppData>({ mentees: {} })
   const [activeTab, setActiveTab] = useState(0)
   const [activeMentee, setActiveMentee] = useState('')
+  const [menteeEmail, setMenteeEmail] = useState('')
   const [mounted, setMounted] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -106,15 +107,27 @@ export default function Dashboard() {
     setDashAI(''); setPlanAI('')
     clearIntakeForm()
     setTradeAccount('')
+    setMenteeEmail('')
   }, [data])
 
   const handleSavePlan = async () => {
-    if (!activeMentee) { alert('Select a mentee first.'); return }
-    const updated = saveMenteePlan(data, activeMentee, plan)
-    setData(updated); await persistData(updated)
-    setPlanLocked(true)
-    alert('Plan saved for ' + activeMentee + '!')
+  if (!activeMentee) { alert('Select a mentee first.'); return }
+  const updated = saveMenteePlan(data, activeMentee, plan)
+  setData(updated); await persistData(updated)
+  setPlanLocked(true)
+  // Sync to Supabase
+  if (menteeEmail) {
+    const res = await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'plan', menteeEmail, data: plan })
+    })
+    const result = await res.json()
+    alert(res.ok ? `Plan saved & synced to app for ${activeMentee}!` : `Plan saved to dashboard but sync failed: ${result.error}`)
+  } else {
+    alert('Plan saved for ' + activeMentee + '! (Add email to sync to the app)')
   }
+}
 
   const handleAddMentee = () => {
     if (!newMenteeName.trim()) return
@@ -206,8 +219,13 @@ export default function Dashboard() {
     const updated = saveSession(data, activeMentee, session)
     setData(updated); await persistData(updated)
     setSessionSaved(true); clearIntakeForm()
-    alert('Session saved! Form cleared and ready for next session.')
-  }
+    if (menteeEmail) {
+  await fetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'session', menteeEmail, data: session })
+  })
+}
 
   const handleLoadSession = (session: SavedSession) => {
     setViewingSession(null)
@@ -423,6 +441,16 @@ export default function Dashboard() {
                   {menteeNames.map(n => <option key={n} value={n}>{n}</option>)}
                   <option value="__new__">+ Add new mentee...</option>
                 </select>
+              </div>
+              <div className={styles.field} style={{ minWidth: 220 }}>
+               <label className={styles.label}>Mentee Email (for app sync)</label>
+               <input
+                className={styles.input}
+                type="email"
+                value={menteeEmail}
+                onChange={e => setMenteeEmail(e.target.value)}
+                placeholder="mentee@email.com"
+               />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 {planLocked ? (
