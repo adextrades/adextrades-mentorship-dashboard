@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   loadDataRemote, saveDataRemote, getMentee, saveMenteePlan, addTrade,
-  updateTrade, deleteTrade, addMentee, saveSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN,
+  updateTrade, deleteTrade, addMentee, saveSession, deleteSession, getAllMenteeNames, DEFAULT_MENTEES, EMPTY_PLAN,
   getSetupCombinationStats
 } from '@/lib/storage'
 import { AppData, MenteePlan, Trade, TradeStatus, SavedSession, TradingAccount, ACCOUNT_TYPES } from '@/lib/types'
@@ -228,6 +228,22 @@ export default function Dashboard() {
   }
 }
 
+const handleDeleteSession = async (sessionId: string) => {
+  if (!activeMentee) return
+  if (!confirm('Delete this session? This cannot be undone.')) return
+  const updated = deleteSession(data, activeMentee, sessionId)
+  setData(updated); await persistData(updated)
+  setViewingSession(null)
+  // Also delete from Supabase if mentee email is set
+  if (menteeEmail) {
+    await fetch('/api/sync', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId })
+    })
+  }
+}
+
   const handleLoadSession = (session: SavedSession) => {
     setViewingSession(null)
     setIntakeDate(session.date); setIntakeTrades(session.trades)
@@ -408,6 +424,7 @@ export default function Dashboard() {
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
               <button className={styles.btnGold} onClick={() => handleLoadSession(viewingSession)}>Load into Intake Form</button>
               <button className={styles.btnGhost} onClick={() => setViewingSession(null)}>Close</button>
+              <button onClick={() => handleDeleteSession(viewingSession.id)} style={{ marginLeft: 'auto', background: 'none', border: '1px solid #c0392b', color: '#c0392b', cursor: 'pointer', padding: '6px 14px', borderRadius: 4, fontFamily: 'Rajdhani, sans-serif', fontSize: 12, fontWeight: 700, letterSpacing: '1px' }}>DELETE</button>
             </div>
           </div>
         </div>

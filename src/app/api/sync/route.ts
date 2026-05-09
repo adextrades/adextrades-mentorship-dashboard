@@ -34,12 +34,6 @@ if (profileError || !profile) {
   }, { status: 404 })
 }
 
-if (profileError || !profile) {
-  return NextResponse.json({
-    error: `No user found with email ${menteeEmail}. Make sure they have signed up for the AdexTrades app first.`
-  }, { status: 404 })
-}
-
     const userId = profile.id
 
     if (type === 'plan') {
@@ -111,6 +105,20 @@ if (profileError || !profile) {
 
   } catch (error) {
     console.error('Sync error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { sessionId } = await request.json()
+    if (!sessionId) return NextResponse.json({ error: 'sessionId required' }, { status: 400 })
+    const supabase = getSupabase()
+    const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Delete error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

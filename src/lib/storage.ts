@@ -161,3 +161,9 @@ export function getSetupCombinationStats(trades: Trade[]): Record<string, { coun
   })
   return stats
 }
+
+export function deleteSession(data: AppData, name: string, sessionId: string): AppData {
+  const mentee = getMentee(data, name)
+  mentee.sessions = (mentee.sessions || []).filter(s => s.id !== sessionId)
+  return { ...data, mentees: { ...data.mentees, [name]: mentee } }
+}
