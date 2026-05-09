@@ -21,18 +21,24 @@ export async function POST(request: Request) {
 
     const supabase = getSupabase()
 
-    // Look up mentee's user ID from profiles by email
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('email', menteeEmail)
-      .single()
+// Look up mentee's user ID from profiles by email
+const { data: profile, error: profileError } = await supabase
+  .from('profiles')
+  .select('id')
+  .eq('email', menteeEmail)
+  .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json({
-        error: `No user found with email ${menteeEmail}. Make sure they have signed up for the AdexTrades app first.`
-      }, { status: 404 })
-    }
+if (profileError || !profile) {
+  return NextResponse.json({
+    error: `No user found with email ${menteeEmail}. Make sure they have signed up for the AdexTrades app first.`
+  }, { status: 404 })
+}
+
+if (profileError || !profile) {
+  return NextResponse.json({
+    error: `No user found with email ${menteeEmail}. Make sure they have signed up for the AdexTrades app first.`
+  }, { status: 404 })
+}
 
     const userId = profile.id
 
